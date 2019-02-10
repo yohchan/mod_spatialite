@@ -36,8 +36,7 @@ gt.type_abr  # ジオメトリタイプの略称（オレオレタイプ） => p
 
 con.discard_geomcol(gt)  # ジオメトリカラムの登録解除メソッド
 con.recov_geomcol(gt)  # ジオメトリカラムの登録メソッド
-con.rename_geomcol(gt, s_gc_dst='geom_renamed')  # ジオメトリカラムをリネームするメソッド
-con.rename_geotable('tbl_hoge', 'tbl_fuga')  # ジオテーブルをリネームするメソッド
+gt = con.rename_geomcol(gt, s_gc_dst='geom_renamed')  # ジオメトリカラムをリネームするメソッド
 con.drop_geotable(gt)  # ジオテーブルを削除するメソッド
 ```
 
