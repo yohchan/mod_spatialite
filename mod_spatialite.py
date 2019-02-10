@@ -860,15 +860,23 @@ class SpatiaLiteConnection(sqlite3.Connection):
     def zipshps2spatialite(self, p_zipshpdir, s_tbl='merge', i_epsg_src=4612, s_chcode_src='utf-8', flg_multi=False):
         import os
         import glob
-        import mod_zip
         import shutil
+
+        # path_zipのzipファイルを一時ディレクトリに展開する
+        def zip_extract(_p_zip):
+            import zipfile
+            import tempfile
+            import os
+            tempdir = tempfile.mkdtemp(dir=os.path.split(_p_zip)[0])  # 解凍先一時ディレクトリを生成
+            zipfile.ZipFile(_p_zip).extractall(tempdir)  # 全部展開
+            return tempdir  # 一時ディレクトリパスを戻り値とする
 
         # フォルダ内の結合するshpファイルのリストを作成
         l_path_zip = glob.glob('{}/*.zip'.format(p_zipshpdir))
 
         for path_zip in l_path_zip:
             # zip展開
-            path_shpdir = mod_zip.zip_extract(path_zip)
+            path_shpdir = zip_extract(path_zip)
 
             # ディレクトリ内のshpのリストを生成（階層構造になっている場合があるので、globでは足りない）
             l_path_shp = []
