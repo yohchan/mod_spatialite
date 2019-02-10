@@ -64,17 +64,33 @@ class SpatiaLiteConnection(sqlite3.Connection):
         # http://docs.python.jp/2/library/sqlite3.html
         self.isolation_level = None
 
-        # mod_spatialiteの読み込み
+        # PATHの追加
         if p_mod_spatialite is not None:
             os.environ['PATH'] = '{};{}'.format(os.environ['PATH'], p_mod_spatialite)
+
+        # mod_spatialiteディレクトリのPATH追加
+        if p_mod_spatialite is not None:
+            os.environ['PATH'] = '{};{}'.format(os.environ['PATH'], os.path.join(p_mod_spatialite, 'mod_spatialite'))
+        else:
+            os.environ['PATH'] = '{};{}'.format(os.environ['PATH'], 'mod_spatialite')
+
+        # mod_spatialiteの読み込み
+        self.isolation_level = ''
         self.enable_load_extension(True)
         self.execute("SELECT load_extension('mod_spatialite');")
 
         # メタデータを登録してSpatiaLiteDBとする。
-        self.execute("""select InitSpatialMetaData(1);""")  # 1はトランザクション有効（高速）
+        self.execute("""SELECT InitSpatialMetaData(1);""")  # 1はトランザクション有効（高速）
 
         # SpatiaLiteのバージョンを返す
-        return self.execute("""select spatialite_version();""").fetchone()[0]
+        return self.get_spatialite_version()
+
+    def get_spatialite_version(self):
+        """
+        SpatiaLiteのバージョンを返す
+        """
+
+        return self.execute("""SELECT spatialite_version();""").fetchone()[0]
 
     # 切断
     def disconnect(self, flg_vacuum=True, flg_upgrade=True):
