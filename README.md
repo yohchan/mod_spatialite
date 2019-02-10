@@ -1,6 +1,6 @@
 # mod_spatialite
 
-SpatiaLiteをPython27で利用しやすく？するためのモジュール。
+SpatiaLiteをPython27で利用しやすく？するためのモジュール。あ、Windowsでしか動作確認してません。。
 mod_spatialite.pyと同じディレクトリに`mod_spatialite`という名称のディレクトリを作成し、mod_spatialite関連のファイルを入れておく。
 
 c.f.
