@@ -255,6 +255,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 print('You must give at least one of ll_coldef and flg_pk.')
                 return
         else:
+            ll_coldef = [[l_coldef[0], self.get_dtype(l_coldef[1])] for l_coldef in ll_coldef]
             s_coldef = u", ".join([u""""{}" {}""".format(l_coldef[0], l_coldef[1]) for l_coldef in ll_coldef])
             if flg_pk:
                 sql = u"""create table "{}" ("PK_UID" INTEGER PRIMARY KEY AUTOINCREMENT, {});""".format(s_tbl, s_coldef)
@@ -336,14 +337,15 @@ class SpatiaLiteConnection(sqlite3.Connection):
         self.execute(sql.format(s_tbl, s_gc))
 
     # add column and return column name
-    def add_column(self, s_tbl, s_col, s_datatype, default_value=None):
+    def add_column(self, s_tbl, s_col, dtype, default_value=None):
+        dtype = self.get_dtype(dtype)
         if default_value is None:
             self.execute(
-                u"""ALTER TABLE "{}" ADD COLUMN "{}" {};""".format(s_tbl, s_col, s_datatype)
+                u"""ALTER TABLE "{}" ADD COLUMN "{}" {};""".format(s_tbl, s_col, dtype)
             )
         else:
             self.execute(
-                u"""ALTER TABLE "{}" ADD COLUMN "{}" {} DEFAULT {};""".format(s_tbl, s_col, s_datatype, default_value)
+                u"""ALTER TABLE "{}" ADD COLUMN "{}" {} DEFAULT {};""".format(s_tbl, s_col, dtype, default_value)
             )
 
         return s_col
@@ -545,7 +547,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
     def get_columnsdef(self, gt_or_tbl, flg_except_gc=False):
         """
         This function returns the column information of the table.
-        Return values are dict of columns info [name, type, notnull, dflt_value, pk]
+        :return :dict of columns info [name, type, notnull, default_value, pk]
         """
         s_tbl = self.get_tblname(gt_or_tbl)
 
@@ -1537,6 +1539,21 @@ class SpatiaLiteConnection(sqlite3.Connection):
         s_temptbl = '{}_{}'.format(s_prefix, s_temptbl)
 
         return s_temptbl
+
+    # SQLiteで定義できるカラムタイプに変換する
+    @staticmethod
+    def get_dtype(dtype):
+        if isinstance(dtype, types.StringTypes):
+            return dtype
+        elif dtype is types.StringType or dtype is types.UnicodeType:
+            return 'TEXT'
+        elif dtype is types.IntType:
+            return 'INTEGER'
+        elif dtype is types.FloatType:
+            return 'REAL'
+        else:
+            print('given type "{}" might be strange.'.format(dtype))
+            return dtype
 
 
 class GTBL(object):
