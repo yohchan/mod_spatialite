@@ -14,6 +14,7 @@ Author: yoh_chan
 import os
 import types
 import sqlite3
+# import pdb
 
 
 class SpatiaLiteConnection(sqlite3.Connection):
@@ -271,15 +272,18 @@ class SpatiaLiteConnection(sqlite3.Connection):
 
         return gt_or_tbl
 
-    # テーブルの削除（ジオメトリがないテーブルでもよい）
+    # drop table
+    def drop_table(self, s_tbl):
+        self.execute(u"""DROP TABLE IF EXISTS "{}";""".format(s_tbl))
+
+    # ジオテーブルの削除（ジオメトリがないテーブルでもよい）
     def drop_geotable(self, gt_or_tbl, i_transaction=1):
         s_tbl = self.get_tblname(gt_or_tbl)
 
         sql = u"""select DropGeoTable('{tbl}', {transaction});""".format(tbl=s_tbl, transaction=i_transaction)
         self.execute(sql)
         # 何故かテーブル本体が削除されないので、こちらで削除
-        sql = u"""drop table if exists "{}";""".format(s_tbl)
-        self.execute(sql)
+        self.drop_table(s_tbl)
 
     # add unique index
     def add_uindex(self, gt_or_tbl, s_col):
@@ -423,9 +427,20 @@ class SpatiaLiteConnection(sqlite3.Connection):
         self.execute(sql)
 
     # clone table
-    def clone_table(self, s_tbl_src, s_tbl_dst=None, s_db='main', i_transaction=1, l_options=None):  # テーブルの複製
+    def clone_table(self, s_tbl_src, s_tbl_dst=None, s_db='main', i_transaction=1, l_options=None,
+                    overwrite=False):
         if s_tbl_dst is None:
             s_tbl_dst = s_tbl_src
+
+        if self.ch_exists_table(s_tbl_dst):
+            if overwrite:
+                self.drop_geotable(s_tbl_dst)
+            else:
+                print('{}--- Warning ---'.format(os.linesep))
+                print('table "{}" is already exists and overwrite flg is not assigned to True...'.format(s_tbl_dst))
+                print('Cloning table process is not applied.'.format(s_tbl_dst))
+                return 0
+
         if l_options is None:
             sql = u"""SELECT CloneTable('{}', '{}', '{}', {});""".format(
                 s_db, s_tbl_src, s_tbl_dst, i_transaction
@@ -434,13 +449,23 @@ class SpatiaLiteConnection(sqlite3.Connection):
             sql = u"""SELECT CloneTable('{}', '{}', '{}', {}, {});""".format(
                 s_db, s_tbl_src, s_tbl_dst, i_transaction, u', '.join([u"'{}'".format(s_opt) for s_opt in l_options])
             )
-        # print(sql)
         self.execute(sql)
 
     # create cloned table
-    def create_cloned_table(self, s_tbl_src, s_tbl_dst=None, s_db='main', i_transaction=1, l_options=None):
+    def create_cloned_table(self, s_tbl_src, s_tbl_dst=None, s_db='main', i_transaction=1, l_options=None,
+                            overwrite=False):
         if s_tbl_dst is None:
             s_tbl_dst = s_tbl_src
+
+        if self.ch_exists_table(s_tbl_dst):
+            if overwrite:
+                self.drop_geotable(s_tbl_dst)
+            else:
+                print('{}--- Warning ---'.format(os.linesep))
+                print('table "{}" is already exists and overwrite flg is not assigned to True...'.format(s_tbl_dst))
+                print('Cloning table process is not applied.'.format(s_tbl_dst))
+                return 0
+
         if l_options is None:
             sql = u"""SELECT CreateClonedTable('{}', '{}', '{}', {});""".format(
                 s_db, s_tbl_src, s_tbl_dst, i_transaction
@@ -449,7 +474,6 @@ class SpatiaLiteConnection(sqlite3.Connection):
             sql = u"""SELECT CreateClonedTable('{}', '{}', '{}', {}, {});""".format(
                 s_db, s_tbl_src, s_tbl_dst, i_transaction, u', '.join([u"'{}'".format(s_opt) for s_opt in l_options])
             )
-        # print(sql)
         self.execute(sql)
 
     # cast to multi geometry
@@ -941,9 +965,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
         # メッシュコード群を生成
         l_meshcode = list()
         lat = lat_min
-        while lat < lat_max + unit_lat:
+        while lat <= lat_max:
             lon = lon_min
-            while lon < lon_max + unit_lon:
+            while lon <= lon_max:
                 meshcode = mod_stdms.get_mesh_index(lon, lat, mesh_level)
                 l_meshcode.append(meshcode)
                 lon += unit_lon
@@ -1361,8 +1385,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
             if s_coordtype == 'geographic':  # get distance with ellipsoidal
                 sql = u"""
                     SELECT ST_Distance(MakePoint({x}, {y}, {epsg}), "{gc_node}", 1)
-                    FROM "{tbl_node}" WHERE "{uid}" == 
-                    {id};
+                    FROM "{tbl_node}"
+                    WHERE "{uid}" == {id}
+                    ;
                 """.format(
                     tbl_node=gt_node.name, gc_node=gt_node.gc, x=x, y=y, epsg=i_epsg, uid=s_uid_nodes
                     , id=d_closest_point['id']
@@ -1532,7 +1557,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
     # 適当な一時テーブル名を作成
     @staticmethod
     def get_temptblname(s_prefix='geotemp'):
-        # 適当な一時テーブル名を作成 http://qiita.com/FGtatsuro/items/92bca91ed665449ab047
+        # 適当な一時テーブル名を作成 http://qiita.com/FGtatsuro/items/92bca9ed665449ab047
         import string
         import random
         s_temptbl = ''.join([random.choice(string.ascii_letters) for i in range(10)])

@@ -10,6 +10,7 @@ spatialiteと独立で扱えるものはこちらに入れ込む。conが必要�
 
 # ある位置のメッシュコードを返す
 def get_mesh_index(longitude, latitude, mesh_level=3):
+    # todo: lonlat値が境界上の場合、計算精度の関係で誤った値になる場合がある。
     import math
 
     if mesh_level in (1, 2, 3, '5x', '2x', 'half', 'quarter', 'eighth'):  # 1st mesh base
