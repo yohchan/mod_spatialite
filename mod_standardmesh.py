@@ -9,18 +9,29 @@ spatialiteと独立で扱えるものはこちらに入れ込む。conが必要�
 
 
 # ある位置のメッシュコードを返す
-def get_mesh_index(longitude, latitude, mesh_level=3):
+def get_mesh_index(
+    longitude: int or float, latitude: int or float, mesh_level: int or str = 3
+) -> str:
     # todo: lonlat値が境界上の場合、計算精度の関係で誤った値になる場合がある。
     import math
 
-    if mesh_level in (1, 2, 3, '5x', '2x', 'half', 'quarter', 'eighth'):  # 1st mesh base
+    if mesh_level in (
+        1,
+        2,
+        3,
+        "5x",
+        "2x",
+        "half",
+        "quarter",
+        "eighth",
+    ):  # 1st mesh base
         x_tmp = longitude - 100
         y_tmp = latitude * 1.5
 
         n_part = 1.0  # 分割数の設定
         x1d = math.floor(x_tmp)
         y1d = math.floor(y_tmp)
-        meshcode = '{}{}'.format(int(y1d), int(x1d))
+        meshcode = "{}{}".format(int(y1d), int(x1d))
 
         x_tmp = x_tmp - x1d / n_part  # / 1.0
         y_tmp = y_tmp - y1d / n_part
@@ -28,15 +39,15 @@ def get_mesh_index(longitude, latitude, mesh_level=3):
             n_part = n_part * 8
             x2d = math.floor(x_tmp * n_part)
             y2d = math.floor(y_tmp * n_part)
-            meshcode = '{}{}{}'.format(meshcode, int(y2d), int(x2d))
+            meshcode = "{}{}{}".format(meshcode, int(y2d), int(x2d))
 
             x_tmp = x_tmp - x2d / n_part  # / 8.0
             y_tmp = y_tmp - y2d / n_part
-            if mesh_level not in (2, '5x', '2x'):  # 3rd mesh base
+            if mesh_level not in (2, "5x", "2x"):  # 3rd mesh base
                 n_part = n_part * 10
                 x3d = math.floor(x_tmp * n_part)
                 y3d = math.floor(y_tmp * n_part)
-                meshcode = '{}{}{}'.format(meshcode, int(y3d), int(x3d))
+                meshcode = "{}{}{}".format(meshcode, int(y3d), int(x3d))
 
                 x_tmp = x_tmp - x3d / n_part  # / 80.0
                 y_tmp = y_tmp - y3d / n_part
@@ -45,84 +56,108 @@ def get_mesh_index(longitude, latitude, mesh_level=3):
                     x4d = math.floor(x_tmp * n_part)
                     y4d = math.floor(y_tmp * n_part)
                     _4d = x4d + y4d * 2 + 1
-                    meshcode = '{}{}'.format(meshcode, int(_4d))
+                    meshcode = "{}{}".format(meshcode, int(_4d))
 
                     x_tmp = x_tmp - x4d / n_part  # / 160.0
                     y_tmp = y_tmp - y4d / n_part
-                    if mesh_level != 'half':  # half mesh base
+                    if mesh_level != "half":  # half mesh base
                         n_part = n_part * 2
                         x5d = math.floor(x_tmp * n_part)
                         y5d = math.floor(y_tmp * n_part)
                         _5d = x5d + y5d * 2 + 1
-                        meshcode = '{}{}'.format(meshcode, int(_5d))
+                        meshcode = "{}{}".format(meshcode, int(_5d))
 
                         x_tmp = x_tmp - x5d / n_part  # / 320.0
                         y_tmp = y_tmp - y5d / n_part
-                        if mesh_level != 'quarter':  # quarter mesh base = eighth mesh
+                        if mesh_level != "quarter":  # quarter mesh base = eighth mesh
                             n_part = n_part * 2
                             x6d = math.floor(x_tmp * n_part)
                             y6d = math.floor(y_tmp * n_part)
                             _6d = x6d + y6d * 2 + 1
-                            meshcode = '{}{}'.format(meshcode, int(_6d))
+                            meshcode = "{}{}".format(meshcode, int(_6d))
 
             else:  # ext 2nd mesh base
-                if mesh_level == '5x':  # 5x mesh
+                if mesh_level == "5x":  # 5x mesh
                     n_part = n_part * 2
                     x3d = math.floor(x_tmp * n_part)
                     y3d = math.floor(y_tmp * n_part)
                     _3d = x3d + y3d * 2 + 1
-                    meshcode = '{}{}'.format(meshcode, int(_3d))
+                    meshcode = "{}{}".format(meshcode, int(_3d))
 
-                elif mesh_level == '2x':  # 2x mesh
+                elif mesh_level == "2x":  # 2x mesh
                     n_part = n_part * 5
                     x3d = math.floor(x_tmp * n_part) * 2
                     y3d = math.floor(y_tmp * n_part) * 2
-                    meshcode = '{}{}{}5'.format(meshcode, int(y3d), int(x3d))
+                    meshcode = "{}{}{}5".format(meshcode, int(y3d), int(x3d))
 
         return meshcode
 
     else:
-        print('invalid mesh_level: {}'.format(mesh_level))
-        return 0
+        print("invalid mesh_level: {}".format(mesh_level))
+        return "invalid mesh_level"
 
 
-def get_unitsize(mesh_level):
+# メッシュレベルに基づいて経度と緯度のメッシュ単位サイズを取得する
+def get_unitsize(mesh_level: int or str) -> tuple:
+    """
+    This function calculates the unit size (longitude and latitude) based on the provided mesh level.
+    It supports the following mesh levels: 1, 2, 3, '5x', '2x', 'half', 'quarter', 'eighth'.
+    If an invalid mesh level is provided, the function prints an error message and returns an empty tuple.
+
+    Args:
+        mesh_level (int or str): The desired mesh level, could be a string or an integer.
+
+    Returns:
+        tuple: If a valid mesh level is provided, it returns a tuple containing the unit longitude and
+               unit latitude sizes.
+               If an invalid mesh level is provided, it returns an empty tuple and prints an error message.
+    """
+
     # 東西南北端の座標
-    if mesh_level in (1, 2, 3, '5x', '2x', 'half', 'quarter', 'eighth'):  # 1st mesh base
+    if mesh_level in (
+        1,
+        2,
+        3,
+        "5x",
+        "2x",
+        "half",
+        "quarter",
+        "eighth",
+    ):  # 1st mesh base
         unitlon = 1.0
         unitlat = 1.0 / 1.5
         if mesh_level != 1:  # 2nd mesh base
             unitlon = unitlon / 8
             unitlat = unitlat / 8
-            if mesh_level not in (2, '5x', '2x'):  # 3rd mesh base
+            if mesh_level not in (2, "5x", "2x"):  # 3rd mesh base
                 unitlon = unitlon / 10
                 unitlat = unitlat / 10
                 if mesh_level != 3:  # ext 3rd mesh base
                     unitlon = unitlon / 2
                     unitlat = unitlat / 2
-                    if mesh_level != 'half':  # half mesh base
+                    if mesh_level != "half":  # half mesh base
                         unitlon = unitlon / 2
                         unitlat = unitlat / 2
-                        if mesh_level != 'quarter':  # quarter mesh base = eighth mesh
+                        if mesh_level != "quarter":  # quarter mesh base = eighth mesh
                             unitlon = unitlon / 2
                             unitlat = unitlat / 2
             else:  # ext 2nd mesh base
-                if mesh_level == '5x':  # 5x mesh
+                if mesh_level == "5x":  # 5x mesh
                     unitlon = unitlon / 2
                     unitlat = unitlat / 2
-                elif mesh_level == '2x':  # 2x mesh
+                elif mesh_level == "2x":  # 2x mesh
                     unitlon = unitlon / 5
                     unitlat = unitlat / 5
 
         return unitlon, unitlat
 
     else:
-        print('invalid mesh_level: {}'.format(mesh_level))
-        return 0
+        print("invalid mesh_level: {}".format(mesh_level))
+        return tuple()
 
 
 # 基準地域メッシュのレベル判別
-def detect_meshlevel(meshcode):
+def detect_meshlevel(meshcode: str) -> int or str:
     # メッシュレベルの自動判別
     if len(meshcode) == 4:
         mesh_level = 1
@@ -131,29 +166,29 @@ def detect_meshlevel(meshcode):
     elif len(meshcode) == 8:
         mesh_level = 3
     elif len(meshcode) == 7:
-        mesh_level = '5x'
+        mesh_level = "5x"
     elif len(meshcode) == 9:
-        if meshcode[-1] == '5':
-            mesh_level = '2x'
-        elif meshcode[-1] in ('1', '2', '3', '4'):
-            mesh_level = 'half'
+        if meshcode[-1] == "5":
+            mesh_level = "2x"
+        elif meshcode[-1] in ("1", "2", "3", "4"):
+            mesh_level = "half"
         else:
             mesh_level = 0
     elif len(meshcode) == 10:
-        mesh_level = 'quarter'
+        mesh_level = "quarter"
     elif len(meshcode) == 11:
-        mesh_level = 'eighth'
+        mesh_level = "eighth"
     else:
         mesh_level = 0
 
     if mesh_level == 0:
-        print('invalid meshcode moge: {}'.format(meshcode))
+        print("invalid meshcode moge: {}".format(meshcode))
 
     return mesh_level
 
 
 # メッシュコードの分割
-def split_meshcode(meshcode):
+def split_meshcode(meshcode: str) -> tuple:
     # メッシュタイプの選別
     mesh_level = detect_meshlevel(meshcode)
 
@@ -176,26 +211,27 @@ def split_meshcode(meshcode):
         if mesh_level != 1:  # 2nd mesh base
             y2d = int(meshcode[4])
             x2d = int(meshcode[5])
-            if mesh_level not in (2, '5x', '2x'):  # 3rd mesh base
+            if mesh_level not in (2, "5x", "2x"):  # 3rd mesh base
                 y3d = int(meshcode[6])
                 x3d = int(meshcode[7])
                 if mesh_level != 3:  # ext 3rd mesh base
                     _4d = int(meshcode[8])
-                    if mesh_level != 'half':  # half mesh base
+                    if mesh_level != "half":  # half mesh base
                         _5d = int(meshcode[9])
-                        if mesh_level != 'quarter':  # quarter mesh base
+                        if mesh_level != "quarter":  # quarter mesh base
                             _6d = int(meshcode[10])
             else:  # ext 2nd mesh base
-                if mesh_level == '5x':  # 5x mesh
+                if mesh_level == "5x":  # 5x mesh
                     _3d = int(meshcode[6])
-                elif mesh_level == '2x':  # 2x mesh
+                elif mesh_level == "2x":  # 2x mesh
                     _3d = int(meshcode[6])
                     _4d = int(meshcode[7])
 
     return mesh_level, x1d, x2d, x3d, y1d, y2d, y3d, _3d, _4d, _5d, _6d
 
 
-def get_stdmeshcode2wkt(meshcode):
+# メッシュコードからメッシュのWKTと端点座標を返す。
+def get_stdmeshcode2wkt(meshcode: str) -> tuple:
     """
     メッシュコードからメッシュのWKTと端点座標を返す。
     2017/07/28 メッシュレベルの自動判別を追加
@@ -203,7 +239,9 @@ def get_stdmeshcode2wkt(meshcode):
     """
 
     # コード分割
-    (mesh_level, x1d, x2d, x3d, y1d, y2d, y3d, _3d, _4d, _5d, _6d) = split_meshcode(meshcode)
+    (mesh_level, x1d, x2d, x3d, y1d, y2d, y3d, _3d, _4d, _5d, _6d) = split_meshcode(
+        meshcode
+    )
 
     # 東西南北端の座標
     if mesh_level != 0:  # 1st mesh base
@@ -216,7 +254,7 @@ def get_stdmeshcode2wkt(meshcode):
             unitlat = unitlat / 8
             minlon = minlon + x2d / 8.0
             minlat = minlat + y2d / 1.5 / 8
-            if mesh_level not in (2, '5x', '2x'):  # 3rd mesh base
+            if mesh_level not in (2, "5x", "2x"):  # 3rd mesh base
                 unitlon = unitlon / 10
                 unitlat = unitlat / 10
                 minlon = minlon + x3d / 8.0 / 10
@@ -228,14 +266,14 @@ def get_stdmeshcode2wkt(meshcode):
                         minlon = minlon + unitlon
                     if _4d in (3, 4):
                         minlat = minlat + unitlat
-                    if mesh_level != 'half':  # half mesh base
+                    if mesh_level != "half":  # half mesh base
                         unitlon = unitlon / 2
                         unitlat = unitlat / 2
                         if _5d in (2, 4):
                             minlon = minlon + unitlon
                         if _5d in (3, 4):
                             minlat = minlat + unitlat
-                        if mesh_level != 'quarter':  # quarter mesh base = eighth mesh
+                        if mesh_level != "quarter":  # quarter mesh base = eighth mesh
                             unitlon = unitlon / 2
                             unitlat = unitlat / 2
                             if _6d in (2, 4):
@@ -243,14 +281,14 @@ def get_stdmeshcode2wkt(meshcode):
                             if _6d in (3, 4):
                                 minlat = minlat + unitlat
             else:  # ext 2nd mesh base
-                if mesh_level == '5x':  # 5x mesh
+                if mesh_level == "5x":  # 5x mesh
                     unitlon = unitlon / 2
                     unitlat = unitlat / 2
                     if _3d in (2, 4):
                         minlon = minlon + unitlon
                     if _3d in (3, 4):
                         minlat = minlat + unitlat
-                elif mesh_level == '2x':  # 2x mesh
+                elif mesh_level == "2x":  # 2x mesh
                     unitlon = unitlon / 5
                     unitlat = unitlat / 5
                     minlon = minlon + unitlon * _4d / 2
@@ -259,9 +297,33 @@ def get_stdmeshcode2wkt(meshcode):
         maxlat = minlat + unitlat
 
         # wkt
-        wkt = 'POLYGON(({0} {1}, {0} {3}, {2} {3}, {2} {1}, {0} {1}))'.format(minlon, minlat, maxlon, maxlat)
+        wkt = "POLYGON(({0} {1}, {0} {3}, {2} {3}, {2} {1}, {0} {1}))".format(
+            minlon, minlat, maxlon, maxlat
+        )
         return wkt, (minlon, minlat), (maxlon, maxlat)
 
     else:
-        print('invalid meshcode hoge: {}'.format(meshcode))
-        return 0
+        print("invalid meshcode hoge: {}".format(meshcode))
+        return tuple()
+
+
+# メッシュコードのリストを取得
+def get_meshlist_from_extent(
+    lon_min: float, lat_min: float, lon_max: float, lat_max: float, mesh_level: int = 3
+) -> list:
+    # メッシュの幅を取得
+    unitlon, unitlat = get_unitsize(mesh_level)
+
+    # 緯度と経度でループを順に回して、メッシュリストを生成
+    mesh_list = []
+    lat = lat_min
+    while lat <= lat_max:
+        lon = lon_min
+        while lon <= lon_max:
+            # 該当する座標のメッシュコードを取得してリストに追加
+            meshcode = get_mesh_index(lon, lat, mesh_level)
+            mesh_list.append(meshcode)
+            lon += unitlon
+        lat += unitlat
+
+    return mesh_list
