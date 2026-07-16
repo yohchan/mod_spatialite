@@ -15,6 +15,7 @@ Author: yoh_chan
 
 from __future__ import annotations  # 同モジュール内の別クラスを参照させるのに必要
 import os
+import sys
 import types
 import sqlite3
 import inspect
@@ -76,7 +77,8 @@ class SpatiaLiteConnection(sqlite3.Connection):
         print(("Spatialite version: {}".format(s_ver)))
 
         # need to set proj db file SpatiaLite5<= and PROJ5<=
-        if float(s_ver[:3]) >= 5:
+        # 同梱proj.dbはWindows同梱PROJ専用。Linux/WSLではOS側PROJが自前のproj.dbを持つため設定しない
+        if sys.platform == "win32" and float(s_ver[:3]) >= 5:
             p_projdb = os.path.join(os.path.split(__file__)[0], "proj.db")
             self.execute(f"""SELECT PROJ_SetDatabasePath('{p_projdb}');""")
             print(self.execute(f"""SELECT PROJ_GetDatabasePath();""").fetchone()[0])
@@ -94,16 +96,19 @@ class SpatiaLiteConnection(sqlite3.Connection):
         self.isolation_level = None
 
         # PATHの追加
-        if self.p_mod_spatialite is not None:
-            os.environ["PATH"] = f'{self.p_mod_spatialite};{os.environ["PATH"]}'
-            os.environ[
-                "PATH"
-            ] = f'{os.path.join(self.p_mod_spatialite, "mod_spatialite")};{os.environ["PATH"]}'
-        else:
-            p_mod = "C:/Dropbox/Files/Yoh_scripts/Git_yoh/mod_spatialite/mod_spatialite"
-            os.environ[
-                "PATH"
-            ] = f'{os.path.abspath(p_mod)};{"mod_spatialite"};{os.environ["PATH"]}'
+        # DLL探索パスの操作はWindows同梱DLL専用。Linux/WSLではOSのlibsqlite3-mod-spatialiteを
+        # 標準ライブラリパスからロードするため不要
+        if sys.platform == "win32":
+            if self.p_mod_spatialite is not None:
+                os.environ["PATH"] = f'{self.p_mod_spatialite};{os.environ["PATH"]}'
+                os.environ[
+                    "PATH"
+                ] = f'{os.path.join(self.p_mod_spatialite, "mod_spatialite")};{os.environ["PATH"]}'
+            else:
+                p_mod = "C:/Dropbox/Files/Yoh_scripts/Git_yoh/mod_spatialite/mod_spatialite"
+                os.environ[
+                    "PATH"
+                ] = f'{os.path.abspath(p_mod)};{"mod_spatialite"};{os.environ["PATH"]}'
 
         # mod_spatialiteの読み込み
         self.isolation_level = ""
