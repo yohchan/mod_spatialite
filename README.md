@@ -24,7 +24,7 @@ Windows では、OS に SpatiaLite が無いため、SpatiaLite の Windows 用�
 - `SpatiaLiteConnection(..., p_mod_spatialite=<DLL のフォルダ>)` を指定すると、そのフォルダを `PATH` に追加して拡張を読む（指定しない場合の既定のパスは旧配置を指しており、見直し予定）。
 - SpatiaLite 5 以上では、モジュールと同じフォルダの `proj.db` を `PROJ_SetDatabasePath` に渡す。
 
-DLL 群と `proj.db` は git では配布しない（`.gitignore` で除外）。入手先: <https://www.gaia-gis.it/gaia-sins/>。
+DLL 群と `proj.db` は SpatiaLite 側の配布物のため、このリポジトリには含めず、再配布もしない（手元に置いたものは `.gitignore` で除外）。Windows で使う場合は、利用者が SpatiaLite の配布元から別途入手する。入手先: <https://www.gaia-gis.it/gaia-sins/>。
 Linux/WSL・Windows のどちらでも配布できる形への見直しは OPEN_ITEMS.md の「設計の見直し」にある。
 
 ## 使い方
@@ -115,7 +115,7 @@ uv export --format requirements.txt -o requirements.txt          # uv.lock を�
 
 ## データ・作業記録の所在
 
-このリポジトリはデータを持たない。保守作業の記録と、整理前に退避した git 外のファイルは、手元の `~/data/mod_spatialite/`（WSL。実体は `D:\Projects\mod_spatialite\` への symlink）に置く。
+このリポジトリはデータを持たない。保守作業の記録と、整理前に退避した git 外のファイルは、開発者の手元の `~/data/mod_spatialite/`（リポジトリの外。別ドライブへの symlink）に置く。バックアップは外付け HDD への手作業の複製で、頻度は不定期。
 
 | パス | 内容 |
 |---|---|
@@ -124,6 +124,6 @@ uv export --format requirements.txt -o requirements.txt          # uv.lock を�
 
 ## 経緯
 
-- 2019〜2024: Windows 上で開発（旧配置は Dropbox 配下）。
+- 2019〜2024: Windows 上で開発（旧配置は別の場所にあった旧メインリポジトリ）。
 - 2026-07: WSL への移行に伴い、Linux/WSL で動くように Windows 固有の処理を `win32` の分岐に限定し、`pyproject.toml`（editable install 用）とスモークテストを追加。開発の場所をこのリポジトリ（WSL 側）に移した。
 - 2026-11-13: 保守を再開。git 外のファイルを退避したうえで、再開前の状態にタグ `pre-revival-20261113`（7251b24）を付けた。
