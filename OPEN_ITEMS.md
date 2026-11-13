@@ -54,7 +54,7 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
   - Windows で同梱 proj.db を探す場所は、従来どおりリポジトリ直下（移動前の「モジュールの隣」と同じ場所）
 - 利用側の直し方
   - import の書き方は変更不要（`from mod_spatialite import SpatiaLiteConnection, GTBL`・`import mod_standardmesh` とも従来どおり動く）。新しく書くコードでは `from mod_spatialite import standardmesh` を推奨
-  - uv で editable 参照している場合: `uv run` を通せば自動で新しい配置を読む。**`.venv` を直接使う Jupyter カーネル・IDE は、`uv sync`（または `uv run` を 1 回）のあと再起動する**。しないと editable の登録が旧配置（リポジトリ直下の mod_spatialite.py）を指したままで、`import mod_spatialite` が失敗するか、直下の同名フォルダを読んで `cannot import name 'SpatiaLiteConnection'` になる
+  - uv で editable 参照している場合: `uv run` を通せば自動で新しい配置を読む。**`.venv` を直接使う Jupyter カーネル・IDE は、`uv sync`（または `uv run` を 1 回）のあと再起動する**。しないと editable の登録が旧配置（リポジトリ直下の mod_spatialite.py）を指したままで、`import mod_spatialite` が `ModuleNotFoundError: No module named 'mod_spatialite'` で失敗する（利用側 2 リポジトリで確認）
   - リポジトリ直下を `sys.path` に足して読む方式は使えなくなった。editable 参照に切り替える
   - `mod_spatialite._core` 等の内部モジュールを直接参照しない（クラスの `__module__` は `mod_spatialite._core` になった）
 
