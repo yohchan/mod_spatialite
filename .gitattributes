@@ -1,2 +1,2 @@
 * text=auto
-mod_spatialite.py text eol=lf
+src/mod_spatialite/_core.py text eol=lf

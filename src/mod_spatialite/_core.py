@@ -79,7 +79,12 @@ class SpatiaLiteConnection(sqlite3.Connection):
         # need to set proj db file SpatiaLite5<= and PROJ5<=
         # 同梱proj.dbはWindows同梱PROJ専用。Linux/WSLではOS側PROJが自前のproj.dbを持つため設定しない
         if sys.platform == "win32" and float(s_ver[:3]) >= 5:
-            p_projdb = os.path.join(os.path.split(__file__)[0], "proj.db")
+            # 配置換え（src/mod_spatialite/ への移動）前と同じく、リポジトリ直下の proj.db を読む。
+            # Windows での SpatiaLite・proj.db の場所の決め方は見直し予定（OPEN_ITEMS 参照）
+            p_projdb = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                "proj.db",
+            )
             self.execute(f"""SELECT PROJ_SetDatabasePath('{p_projdb}');""")
             print(self.execute(f"""SELECT PROJ_GetDatabasePath();""").fetchone()[0])
             print(f"Successflly append proj.db path: {p_projdb}")
@@ -1463,7 +1468,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         mesh_level=3,
         ellipsoid="wgs84",
     ):
-        import mod_standardmesh as mod_stdms
+        from . import standardmesh as mod_stdms
 
         # check given extent format
         if isinstance(lat_max_or_t_nesw, (list, tuple)):

@@ -1,5 +1,7 @@
-# Windows 用 SpatiaLite の DLL 群・同梱 proj.db（手元に置く実行時ファイル。git では配布しない）
+# Windows 用 SpatiaLite の DLL 群・proj.db（手元に置く実行時ファイル。SpatiaLite 側の配布物のため再配布しない）
+# /mod_spatialite/ は旧名（配置換え前の置き場所）。手元では /_spatialite_win/ に改名して使う
 /mod_spatialite/
+/_spatialite_win/
 /mod_spatialite_old/
 /proj.db
 

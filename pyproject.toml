@@ -12,7 +12,10 @@ requires-python = ">=3.10"
 dependencies = []
 
 [tool.setuptools]
-py-modules = ["mod_spatialite", "mod_standardmesh"]
+# 本体は src/mod_spatialite/ パッケージ。mod_standardmesh は旧名で import できるようにする互換用モジュール
+package-dir = {"" = "src"}
+packages = ["mod_spatialite"]
+py-modules = ["mod_standardmesh"]
 
 # 開発依存（pytest・ruff）は [dependency-groups] に書かない。editable の path 依存では
 # uv が参照先の dependency-groups を利用側の uv.lock に写すため、追加・変更のたびに

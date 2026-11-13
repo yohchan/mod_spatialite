@@ -4,7 +4,7 @@
 # 分割地域メッシュ: 2分割ごとに 1=南西 2=南東 3=北西 4=北東、5倍: 2次を2分割）から手計算した。
 import math
 
-import mod_standardmesh as ms
+from mod_spatialite import standardmesh as ms
 
 # メッシュコード -> (lon_min, lat_min, lon_max, lat_max)
 D_EXPECTED: dict[str, tuple[float, float, float, float]] = {

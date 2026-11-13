@@ -2,8 +2,8 @@
 
 SpatiaLite を Python の `sqlite3` から扱いやすくするためのモジュール群。
 
-- `mod_spatialite.py`: `SpatiaLiteConnection`（`sqlite3.Connection` を継承し、SpatiaLite 拡張の読み込みと初期化を行う）と、テーブル名・ジオメトリカラム・EPSG・ジオメトリタイプを組にして扱う `GTBL`。シェープファイル・zip の取り込み、ジオメトリカラムの登録・改名、インデックス、ATTACH などのメソッドを持つ。
-- `mod_standardmesh.py`: JIS 標準地域メッシュ（1次〜3次、1/2・1/4 細分）のコード計算、WKT 生成、メッシュコード列から区画・代表点を作る SQL 式の生成。
+- `mod_spatialite`（パッケージ）: `SpatiaLiteConnection`（`sqlite3.Connection` を継承し、SpatiaLite 拡張の読み込みと初期化を行う）と、テーブル名・ジオメトリカラム・EPSG・ジオメトリタイプを組にして扱う `GTBL`。シェープファイル・zip の取り込み、ジオメトリカラムの登録・改名、インデックス、ATTACH などのメソッドを持つ。
+- `mod_spatialite.standardmesh`: JIS 標準地域メッシュ（1次〜3次、1/2・1/4 細分）のコード計算、WKT 生成、メッシュコード列から区画・代表点を作る SQL 式の生成。旧名 `mod_standardmesh` でも import できる（互換用）。
 
 状態: 2026-11-13 に保守を再開し、設計の見直しを進めている。未完了の事項・既知の問題点・API や挙動の変更の記録は [OPEN_ITEMS.md](OPEN_ITEMS.md) にある。
 
@@ -43,8 +43,10 @@ mod-spatialite = { path = "../mod_spatialite", editable = true }
 
 ```python
 from mod_spatialite import SpatiaLiteConnection, GTBL
-import mod_standardmesh
+from mod_spatialite import standardmesh  # 旧名の import mod_standardmesh も可
 ```
+
+`mod_spatialite._core` など先頭が `_` のモジュールは内部用のため、直接 import しない。リポジトリ直下を `sys.path` に足して読む方式は使えない（本体は `src/` の下にある）。
 
 API や挙動を変えたときは、OPEN_ITEMS.md の「変更の記録」に旧→新と利用側での直し方を書く。利用側はそれを見て追随する。
 
@@ -80,7 +82,7 @@ con.drop_geotable(gt)                              # ジオテーブルの削除
 ### 標準地域メッシュ
 
 ```python
-import mod_standardmesh as ms
+from mod_spatialite import standardmesh as ms
 
 s_code = ms.get_mesh_index(141.35, 43.06, 3)  # 経度・緯度から 3 次メッシュコード
 ms.detect_meshlevel(s_code)                   # => 3
@@ -105,7 +107,8 @@ uv export --format requirements.txt -o requirements.txt          # uv.lock を�
 
 | パス | 役割 |
 |---|---|
-| `mod_spatialite.py`、`mod_standardmesh.py` | 本体（平置きの 2 モジュール） |
+| `src/mod_spatialite/` | 本体のパッケージ（`__init__.py` で公開する名前を定める。`_core.py` に接続クラスと GTBL、`standardmesh.py` に標準地域メッシュ） |
+| `src/mod_standardmesh.py` | 旧名で import するための互換用モジュール |
 | `tests/` | pytest のテスト |
 | `tools/backup_local_only_files.py` | git が持っていない手元のファイル（未追跡・除外分）を、整理の前にデータ置き場へ SHA-256 の目録付きで退避する |
 | `OPEN_ITEMS.md` | 未完了・持ち越し事項と変更の記録 |
