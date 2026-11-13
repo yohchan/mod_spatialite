@@ -30,7 +30,16 @@ logger = logging.getLogger(__name__)
 
 
 class SpatiaLiteConnection(sqlite3.Connection):
-    """
+    """SpatiaLite 拡張を読み込んだ sqlite3 の接続。
+
+    トランザクション: 初期化のあと isolation_level=None（自動コミット）にしている。
+    このため execute / executemany は 1 文ごとにコミットされ、大量の行を書き込むと
+    遅い（ファイルシステムによっては数万行で数秒が十数分になる）。まとめて書き込むときは
+    明示的に BEGIN / COMMIT（失敗時は ROLLBACK）で囲む。
+    自動コミットの接続では、Python の `with con:` はトランザクションを開始しない
+    （ブロックの終わりにコミットするだけで、BEGIN は出さない）ため、速くはならない。
+    begin() は BEGIN を出すだけで、例外時の ROLLBACK はしない。
+
     ref: https://stackoverflow.com/questions/23683886
     ref: https://stackoverflow.com/questions/15556181
     ref: https://codereview.stackexchange.com/questions/134535
@@ -181,7 +190,12 @@ class SpatiaLiteConnection(sqlite3.Connection):
         return self.execute("""SELECT spatialite_version();""").fetchone()[0]
 
     # 切断
-    def disconnect(self, flg_vacuum=True, flg_upgrade=True):
+    def disconnect(self, flg_vacuum=False, flg_upgrade=False):
+        """接続を閉じる。
+
+        既定では閉じるだけ。VACUUM（DB の作り直し）と upgrade_db（統計・トリガの更新）は
+        大きい DB では時間がかかるため、必要なときに flg_vacuum=True / flg_upgrade=True で指定する。
+        """
         if flg_vacuum:
             logger.info("vacuuming db...")
             self.vacuum()

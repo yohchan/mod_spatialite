@@ -102,6 +102,7 @@ def test_metadata_check_looks_at_main_only(tmp_path: Path) -> None:
     p_attached = tmp_path / "attached.sqlite"
     SpatiaLiteConnection(str(p_attached)).close()
     p_main = tmp_path / "main_plain.sqlite"
+
     class _Plain(sqlite3.Connection):  # コンストラクタでの初期化を通らない接続
         get_spatialite_version = SpatiaLiteConnection.get_spatialite_version
 
@@ -130,3 +131,23 @@ def test_page_size_ignored_for_existing_db(tmp_path: Path) -> None:
     assert con.execute("PRAGMA page_size").fetchone()[0] == 4096
     assert con.set_page_size(65536) == 65536
     con.close()
+
+
+def test_disconnect_defaults_do_not_vacuum(tmp_path: Path, monkeypatch) -> None:
+    from mod_spatialite import SpatiaLiteConnection
+
+    l_called: list[str] = []
+    monkeypatch.setattr(
+        SpatiaLiteConnection, "vacuum", lambda self: l_called.append("vacuum")
+    )
+    monkeypatch.setattr(
+        SpatiaLiteConnection,
+        "upgrade_db",
+        lambda self, *a, **k: l_called.append("upgrade"),
+    )
+    SpatiaLiteConnection(str(tmp_path / "d1.sqlite")).disconnect()
+    assert l_called == []
+    SpatiaLiteConnection(str(tmp_path / "d2.sqlite")).disconnect(
+        flg_vacuum=True, flg_upgrade=True
+    )
+    assert l_called == ["vacuum", "upgrade"]
