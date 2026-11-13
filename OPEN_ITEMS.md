@@ -21,7 +21,8 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 測地線距離の専用メソッドが無い（ST_Distance(a, b, 1) と MakeLine を生 SQL で書けば足りる）
 - [done 2026-11-13] 2026-11-13 get_tblname / get_tblname_and_gc は staticmethod なのに、引数が不正なときの分岐で self を参照する（その分岐に入ると NameError。ruff F821）
 - [ ] 2026-11-13 `.format` に使われない引数がある（ruff F523、src/mod_spatialite/_core.py の clone_table・create_cloned_table）。意図した値が SQL・メッセージに入っていない可能性を確認する
-- [ ] 2026-11-13 ruff の設定は入れたが、一括整形（7 ファイルが対象）と既存の指摘（行長 E501 が 122 件ほか、計 135 件）の修正は未実施。配置換えの前後どちらで行うかを決めてから行う
+- [done 2026-11-13] ruff による一括整形（1c90525。.git-blame-ignore-revs に登録、Markdown は対象外）
+- [ ] 2026-11-13 ruff の既存の指摘（行長 E501 ほか）の修正は未実施。各段階で触る箇所から順に直す
 - [ ] 2026-11-13 新しく作る DB のページサイズが既定の 4096 のまま。列の多い表（例: 200 列を超え 1 行約 2KB の表）では 1 ページに 1 行しか入らず、ほぼ 2 倍の大きさになる（合成データで page_size 65536 にすると約半分を確認）。新規作成時に page_size を指定できる引数（InitSpatialMetaData より前に PRAGMA page_size）か、既存 DB のページサイズを変える補助（PRAGMA page_size → VACUUM）を設ける。優先度中
 - [ ] 2026-11-13 zipshps2spatialite のポリゴン取り込みが遅い（数十万行規模のポリゴンで、dbf の属性だけを取り込む場合の約 3 倍の時間がかかる）。1 本ずつ一時表に ImportSHP してから CloneTable で追記する方式が原因と見ている。優先度低
 
