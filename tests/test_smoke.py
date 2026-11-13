@@ -57,9 +57,29 @@ def test_standardmesh() -> None:
     assert l_funcs, "mod_standardmesh has no public functions"
 
 
+def test_invalid_arg_messages() -> None:
+    # 不正な引数の分岐が NameError／TypeError にならず、メッセージを出して 0 を返すこと
+    from mod_spatialite import SpatiaLiteConnection
+
+    assert SpatiaLiteConnection.get_tblname(123) == 0
+    assert SpatiaLiteConnection.get_tblname_and_gc(123) == 0
+    assert SpatiaLiteConnection.get_tblname("tbl_x") == "tbl_x"
+    assert SpatiaLiteConnection.get_tblname_and_gc("tbl_x", "pt_4612") == ("tbl_x", "pt_4612")
+
+    # get_method_name は呼び出し元のメソッド名を返す（インスタンスからも呼べる）
+    con = SpatiaLiteConnection(":memory:")
+
+    def _caller() -> str:
+        return con.get_method_name()
+
+    assert _caller() == "_caller"
+    con.close()
+
+
 if __name__ == "__main__":
     test_import()
     test_memory_connection()
     test_replica_db_connection()
     test_standardmesh()
+    test_invalid_arg_messages()
     print("all smoke tests passed.")

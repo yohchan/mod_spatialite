@@ -2267,7 +2267,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif isinstance(gt_or_tbl, (str,)):
             s_tbl = gt_or_tbl
         else:
-            print(f"{self.get_method_name()}: given parameter is something wrong")
+            print("get_tblname: given parameter is something wrong")
             return 0  # 処理終了
 
         return s_tbl
@@ -2281,7 +2281,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif isinstance(gt_or_tbl, (str,)) and s_gc is not None:
             s_tbl = gt_or_tbl
         else:
-            print(f"{self.get_method_name()}: given parameter is something wrong")
+            print("get_tblname_and_gc: given parameter is something wrong")
             print(("given gt_or_tbl is {}".format(gt_or_tbl)))
             print(("given s_gc is {}".format(s_gc)))
             return 0  # 処理終了
@@ -2371,9 +2371,10 @@ class SpatiaLiteConnection(sqlite3.Connection):
         print(f'the table "{s_tbl}" has no primary key column. return None.')
         return None
 
-    # get method name
+    # 呼び出し元のメソッド名を返す（メッセージ表示用）
+    @staticmethod
     def get_method_name():
-        return inspect.currentframe().f_code.co_name
+        return inspect.currentframe().f_back.f_code.co_name
 
 
 class GTBL(object):
