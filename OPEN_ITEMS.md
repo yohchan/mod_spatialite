@@ -19,7 +19,7 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 Windows 用の絶対パス（C:/Dropbox/.../mod_spatialite/mod_spatialite）が win32 分岐にハードコードされている（mod_spatialite.py の initialize）
 - [ ] 2026-11-13 generate_stdmesh は Python で 1 区画ずつ WKT を作って INSERT する（全国規模には不向き）。get_mesh_index の境界上の精度問題と 1/10・1/20 細分は未実装
 - [ ] 2026-11-13 測地線距離の専用メソッドが無い（ST_Distance(a, b, 1) と MakeLine を生 SQL で書けば足りる）
-- [ ] 2026-11-13 get_tblname / get_tblname_and_gc は staticmethod なのに、引数が不正なときの分岐で self を参照する（その分岐に入ると NameError。ruff F821、mod_spatialite.py 2270・2284 行付近）
+- [done 2026-11-13] 2026-11-13 get_tblname / get_tblname_and_gc は staticmethod なのに、引数が不正なときの分岐で self を参照する（その分岐に入ると NameError。ruff F821、mod_spatialite.py 2270・2284 行付近）
 - [ ] 2026-11-13 `.format` に使われない引数がある（ruff F523、mod_spatialite.py 639・682 行付近）。意図した値が SQL・メッセージに入っていない可能性を確認する
 - [ ] 2026-11-13 ruff の設定は入れたが、一括整形（7 ファイルが対象）と既存の指摘（行長 E501 が 122 件ほか、計 135 件）の修正は未実施。配置換えの前後どちらで行うかを決めてから行う
 - [ ] 2026-11-13 新しく作る DB のページサイズが既定の 4096 のまま。列の多い表（1 行約 2KB、2022_MSW の 234 列の表など）では 1 ページに 1 行しか入らず、ほぼ 2 倍の大きさになる（合成データで page_size 65536 にすると約半分を確認）。新規作成時に page_size を指定できる引数（InitSpatialMetaData より前に PRAGMA page_size）か、既存 DB のページサイズを変える補助（PRAGMA page_size → VACUUM）を設ける。優先度中
@@ -33,7 +33,7 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 パッケージ構成（平置きの py-modules mod_spatialite・mod_standardmesh）の見直し。利用側の import と editable 参照に響くため、変更の記録とあわせて行う
 
 ### リポジトリの運用
-- [ ] 2026-11-13 開発依存グループ（pytest・ruff。4c58810）の追加が、editable で参照する利用側（2022_MSW・2020_PV）の `uv lock --check`／`uv run --locked` に影響しないかを確認する（影響する場合は変更の記録に旧→新と直し方〔利用側で lock を取り直す〕を書く）
+- [done 2026-11-13] 開発依存グループ（pytest・ruff。4c58810）の追加が、editable で参照する利用側の `uv lock --check`／`uv run --locked` に影響しないかを確認する → 影響した（利用側の lock がずれて止まる）。開発依存グループを取り下げて解消（変更の記録を参照）
 - [ ] 2026-11-13 手元の git 設定が core.autocrlf=true のため、新しいファイルが作業ツリーでは CRLF で書き出される。.gitattributes（現行は `* text=auto` と mod_spatialite.py の eol=lf）で全テキストの改行を LF に固定するかを決める
 - [ ] 2026-11-13 .gitignore がルートの `/mod_spatialite/`（Windows 用 DLL のフォルダ）を除外している。配置換えで同じ名前のパッケージフォルダを作ると丸ごと無視されるため、配置換えの前に DLL の置き場所と除外の規則を見直す
 - [ ] 2026-11-13 データ置き場（~/data/mod_spatialite、実体 D:\Projects\mod_spatialite）のバックアップの方式・頻度を決めて README に書く
@@ -42,6 +42,16 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 旧配置（Dropbox 側の旧メインリポジトリ。4bd68fe で停止し、7251b24 以降の修正を含まない）を sys.path 注入・exec で読んでいる利用側は、各リポジトリ側でこのリポジトリの参照へ切り替える（このリポジトリでは行わない）
 
 ## 変更の記録
+
+### 2026-11-13 引数が不正なときのメッセージ表示の不具合
+- get_method_name を staticmethod にし、呼び出し元のメソッド名を返すよう修正（以前は引数を取らない普通のメソッドで、self.get_method_name() は TypeError、返す名前も get_method_name 自身だった）。これを使う get_extent・rename_geomcol・ch_and_get_gtbl の不正引数の分岐が、エラーで止まらずメッセージを出すようになった
+- staticmethod の get_tblname / get_tblname_and_gc は self を参照していた（NameError）。関数名を直接表示するよう修正
+- 挙動はいずれも意図どおり（メッセージを表示して 0 または None を返す）に戻っただけ。利用側の直し方: 不要
+
+### 2026-11-13 開発依存グループの追加（4c58810・718c3ec）と取り下げ
+- 4c58810 で pyproject.toml に `[dependency-groups] dev`（pytest・ruff）を追加した。editable の path 依存では uv が参照先の dependency-groups を利用側の uv.lock（mod-spatialite の `[package.metadata.requires-dev]`）に写すため、利用側の `uv lock --check` が不整合となり、`uv run --locked`／`uv sync --locked` が止まった（2020_PV で差分を確認、2022_MSW も同じメッセージ）。解決されるパッケージは増えない
+- 取り下げのコミットで `[dependency-groups]` を削除し、uv.lock を 4c58810 より前と同じ内容（mod-spatialite 自身のみ）に戻した
+- 利用側の直し方: 不要（取り下げにより、4c58810 より前に取った利用側の lock のまま整合する）。4c58810〜718c3ec の間に利用側で `uv lock` を取り直していた場合は、もう一度 `uv lock` を取り直す
 
 ### 2026-11-13 commit 97b5332（2022_MSW の依頼による）
 - 追加（既存の呼び出しへの影響なし）

@@ -90,13 +90,15 @@ s_expr = ms.get_meshcode_sql_mbr("meshcode", 3, 4612)  # メッシュコード�
 ## 開発
 
 ```bash
-uv sync                                  # .venv を作り、開発依存（pytest・ruff）も入れる
-uv run --locked python -m pytest         # テスト（tests/）
-uv run --locked ruff check .             # Lint（設定は pyproject.toml。既存コードの一括修正は未実施）
-uv export --format requirements.txt -o requirements.txt  # uv.lock を更新したら書き出す（手編集しない）
+uv sync                                                          # .venv を作る
+uv run --locked --with 'pytest==9.2.0' python -m pytest          # テスト（tests/）
+uvx ruff@0.17.5 check .                                          # Lint（設定は pyproject.toml。既存コードの一括修正は未実施）
+uv export --format requirements.txt -o requirements.txt          # uv.lock を更新したら書き出す（手編集しない）
 ```
 
+- 開発用の道具（pytest・ruff）は `pyproject.toml` の `[dependency-groups]` に書かず、上のように版を指定して実行する。editable の path 依存では、uv が参照先の dependency-groups を利用側の `uv.lock` に写すため、ここを変えるたびに利用側の `uv run --locked` が止まるため。
 - `uv.lock` と `requirements.txt` はコミットする。`requirements.txt` は uv が使えないときに pip で環境を再現するための退避用。
+- `pyproject.toml` の `[project]`（dependencies・requires-python 等）を変えると、利用側の `uv.lock` も取り直しが要る。変えるときは OPEN_ITEMS.md の「変更の記録」に書く。
 - コントリビューターは 1 名のため、`master` に直接コミット・push する。
 
 ### リポジトリの構成

@@ -14,13 +14,10 @@ dependencies = []
 [tool.setuptools]
 py-modules = ["mod_spatialite", "mod_standardmesh"]
 
-[dependency-groups]
-# 開発時だけの依存（テスト・Lint）。利用側の依存解決への影響は確認中（OPEN_ITEMS 参照）。
-# 下限は 2026-11-13 の導入時点の版（tests/ が pytest 9.2.0 で全件合格することを確認）。
-dev = [
-    "pytest>=9.2.0",
-    "ruff>=0.17.5",
-]
+# 開発依存（pytest・ruff）は [dependency-groups] に書かない。editable の path 依存では
+# uv が参照先の dependency-groups を利用側の uv.lock に写すため、追加・変更のたびに
+# 利用側の `uv run --locked` が止まる（2026-11-13 に確認）。
+# テスト・Lint は `uv run --with` / `uvx` で版を指定して実行する（README の「開発」）。
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
