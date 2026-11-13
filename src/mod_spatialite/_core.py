@@ -37,24 +37,32 @@ class SpatiaLiteConnection(sqlite3.Connection):
     fef: https://docs.python.jp/3/library/sqlite3.html#sqlite3.connect
     """
 
-    def __init__(self, *args, p_mod_spatialite=None, **kwargs):
+    def __init__(self, *args, p_mod_spatialite=None, i_page_size=None, **kwargs):
+        """SpatiaLite 拡張を読み込んだ接続を開く。
+
+        引数は sqlite3.connect と同じ（URI は uri=True で渡す。例: "file:a.sqlite?mode=ro"）。
+        ファイルが無い場合は sqlite3 自身が新しく作る（mode=ro では作らずに失敗する）。
+
+        p_mod_spatialite: Windows で SpatiaLite の DLL を置いたフォルダ
+        i_page_size: 新しく DB を作るときのページサイズ（例: 65536）。既存の DB では
+            無視する（変えるには set_page_size を使う）
+        acv（キーワード）: True なら接続前に DB を <名前>_acv.<拡張子> へ複製する
+        """
         # SpatiaLite のファイル入出力系の関数（ImportSHP・ExportSHP 等）を使えるようにする。
         # 拡張を読み込む前に設定する必要がある。利用側が既に設定していれば上書きしない。
         os.environ.setdefault("SPATIALITE_SECURITY", "relaxed")
-        logger.info(
-            "SPATIALITE_SECURITY=%s", os.environ.get("SPATIALITE_SECURITY")
-        )
-
-        # If no db file is exist, then create it.
-        if args[0] != ":memory:" and not os.path.isfile(args[0]):
-            logger.info(("the db file {} is not exist and create it.".format(args[0])))
-            open(args[0], "w").close()
+        logger.info("SPATIALITE_SECURITY=%s", os.environ.get("SPATIALITE_SECURITY"))
 
         try:
             if kwargs["acv"]:
                 if args[0] == ":memory:":
                     logger.info(
                         "Connecting with memory db mode. You cannot archive existing data..."
+                    )
+                elif str(args[0]).startswith("file:") or not os.path.isfile(args[0]):
+                    logger.warning(
+                        "acv: %s is a URI or does not exist yet; no archive was made.",
+                        args[0],
                     )
                 else:
                     import shutil
@@ -79,6 +87,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
 
         sqlite3.Connection.__init__(self, *args, **kwargs)  # 継承
         self.p_mod_spatialite = p_mod_spatialite
+        self.i_page_size = i_page_size
         s_ver = self.initialize()
 
         logger.info("Successfully connected to SQLite DB with mod_spatialite.")
@@ -135,10 +144,30 @@ class SpatiaLiteConnection(sqlite3.Connection):
         self.enable_load_extension(True)
         self.execute("SELECT load_extension('mod_spatialite');")
 
-        # メタデータを登録してSpatiaLiteDBとする。
-        self.execute(
-            """SELECT InitSpatialMetaData(1);"""
-        )  # 1はトランザクション有効（高速）
+        # 新しい DB（まだページが無い）なら、テーブルを作る前にページサイズを設定する
+        if getattr(self, "i_page_size", None) is not None:
+            if self.execute("PRAGMA main.page_count;").fetchone()[0] == 0:
+                self.execute(f"PRAGMA main.page_size = {int(self.i_page_size)};")
+            else:
+                logger.info(
+                    "i_page_size is ignored for an existing database (use set_page_size)."
+                )
+
+        # メタデータが無い（未初期化の）DB のときだけ登録して SpatiaLite DB とする。
+        # 判定は主接続（main）のみを見る（ATTACH 先の影響を受けない）。
+        # 既存 DB で毎回実行すると、"table spatial_ref_sys already exists" が出るため。
+        if not self.execute(
+            "SELECT count(*) FROM main.sqlite_master"
+            " WHERE type = 'table' AND name = 'spatial_ref_sys';"
+        ).fetchone()[0]:
+            i_res = self.execute("""SELECT InitSpatialMetaData(1);""").fetchone()[
+                0
+            ]  # 1はトランザクション有効（高速）
+            if i_res != 1:
+                logger.warning(
+                    "InitSpatialMetaData failed (read-only connection?): result=%s",
+                    i_res,
+                )
         self.isolation_level = None
 
         # SpatiaLiteのバージョンを返す
@@ -168,6 +197,19 @@ class SpatiaLiteConnection(sqlite3.Connection):
     # begin
     def begin(self):
         self.execute("""BEGIN;""")
+
+    def set_page_size(self, i_page_size: int) -> int:
+        """既存の DB のページサイズを変える（PRAGMA page_size のあと VACUUM で作り直す）。
+
+        WAL モードでは変えられないため、その場合は何もせず警告する。変更後のページサイズを返す。
+        """
+        s_mode = self.execute("PRAGMA main.journal_mode;").fetchone()[0]
+        if str(s_mode).lower() == "wal":
+            logger.warning("set_page_size: page size cannot be changed in WAL mode.")
+        else:
+            self.execute(f"PRAGMA main.page_size = {int(i_page_size)};")
+            self.vacuum()
+        return self.execute("PRAGMA main.page_size;").fetchone()[0]
 
     # vacuum
     def vacuum(self):
