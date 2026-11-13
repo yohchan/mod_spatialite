@@ -30,6 +30,8 @@ testpaths = ["tests"]
 # 一括整形・一括修正はまだ行っていない（差分が大きく、利用側の調査と衝突するため。OPEN_ITEMS 参照）。
 line-length = 88
 target-version = "py310"
+# README 等の Markdown 内のコード例は、コメントの桁揃えを保つため整形しない
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
