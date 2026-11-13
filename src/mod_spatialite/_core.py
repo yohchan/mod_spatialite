@@ -19,10 +19,14 @@ import sys
 import types
 import sqlite3
 import inspect
+import logging
 
 # import pdb  # for debug
 
-print("SpatiaLite modules was imported.")
+# メッセージは logging で出す（ロガー名 mod_spatialite._core）。ハンドラは設定しない。
+# WARNING 以上は Python の既定で stderr に出る。INFO を見るには利用側で
+# logging.basicConfig(level=logging.INFO) 等を設定する。
+logger = logging.getLogger(__name__)
 
 
 class SpatiaLiteConnection(sqlite3.Connection):
@@ -38,17 +42,17 @@ class SpatiaLiteConnection(sqlite3.Connection):
             "SPATIALITE_SECURITY", "relaxed"
         )  # 2021-10-06 なんとこれで有効にできるらしい！
         os.environ["SPATIALITE_SECURITY"] = "relaxed"
-        print(os.environ.get("SPATIALITE_SECURITY"))
+        logger.info(os.environ.get("SPATIALITE_SECURITY"))
 
         # If no db file is exist, then create it.
         if args[0] != ":memory:" and not os.path.isfile(args[0]):
-            print(("the db file {} is not exist and create it.".format(args[0])))
+            logger.info(("the db file {} is not exist and create it.".format(args[0])))
             open(args[0], "w").close()
 
         try:
             if kwargs["acv"]:
                 if args[0] == ":memory:":
-                    print(
+                    logger.info(
                         "Connecting with memory db mode. You cannot archive existing data..."
                     )
                 else:
@@ -76,9 +80,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
         self.p_mod_spatialite = p_mod_spatialite
         s_ver = self.initialize()
 
-        print("Successfully connected to SQLite DB with mod_spatialite.")
-        print(("DB-path: {}".format(*args)))
-        print(("Spatialite version: {}".format(s_ver)))
+        logger.info("Successfully connected to SQLite DB with mod_spatialite.")
+        logger.info(("DB-path: {}".format(*args)))
+        logger.info(("Spatialite version: {}".format(s_ver)))
 
         # need to set proj db file SpatiaLite5<= and PROJ5<=
         # 同梱proj.dbはWindows同梱PROJ専用。Linux/WSLではOS側PROJが自前のproj.dbを持つため設定しない
@@ -92,8 +96,10 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 "proj.db",
             )
             self.execute(f"""SELECT PROJ_SetDatabasePath('{p_projdb}');""")
-            print(self.execute(f"""SELECT PROJ_GetDatabasePath();""").fetchone()[0])
-            print(f"Successflly append proj.db path: {p_projdb}")
+            logger.info(
+                self.execute(f"""SELECT PROJ_GetDatabasePath();""").fetchone()[0]
+            )
+            logger.info(f"Successflly append proj.db path: {p_projdb}")
 
     # mod_spatialiteの適用と初期化
     def initialize(self, row_factory=sqlite3.Row):
@@ -147,16 +153,16 @@ class SpatiaLiteConnection(sqlite3.Connection):
     # 切断
     def disconnect(self, flg_vacuum=True, flg_upgrade=True):
         if flg_vacuum:
-            print("vacuuming db...")
+            logger.info("vacuuming db...")
             self.vacuum()
 
         if flg_upgrade:
-            print("upgrading db...")
+            logger.info("upgrading db...")
             self.upgrade_db()
 
         p_db = self.get_dbpath()
         self.close()
-        print(("the database {} was successfully closed.".format(p_db)))
+        logger.info(("the database {} was successfully closed.".format(p_db)))
 
     # begin
     def begin(self):
@@ -171,13 +177,13 @@ class SpatiaLiteConnection(sqlite3.Connection):
         import os
 
         if not os.path.isfile(p_db):
-            print(("oops... db file: {} is not exist.".format(p_db)))
+            logger.warning(("oops... db file: {} is not exist.".format(p_db)))
             return
 
         sql = """attach database '{}' as {};""".format(os.path.abspath(p_db), s_alias)
         # print(sql)
         self.execute(sql)
-        print(
+        logger.info(
             (
                 "attached database: {} into: {}".format(
                     os.path.split(p_db)[1], os.path.split(self.get_dbpath())[1]
@@ -201,27 +207,29 @@ class SpatiaLiteConnection(sqlite3.Connection):
             else:
                 pass
 
-        print(('no such table: "{}"'.format(dbname)))
+        logger.warning(('no such table: "{}"'.format(dbname)))
         return 0
 
     # check Routing
     def ch_able_routing(self):
         import sys
 
-        print(("{}check routing libraries...".format(os.linesep)))
+        logger.info(("{}check routing libraries...".format(os.linesep)))
 
         # check SpatiaLite version
         sql = """SELECT spatialite_version();"""
         try:
             s_ver = self.execute(sql).fetchone()[0]
         except self.OperationalError:
-            print(
+            logger.info(
                 "Error: spatialite version was not able to fetch... Did you mount mod_spatialite?"
             )
             sys.exit()
 
         if int(s_ver[0]) < 5:
-            print(('mounted spatialite version "{}" is not suitable...'.format(s_ver)))
+            logger.warning(
+                ('mounted spatialite version "{}" is not suitable...'.format(s_ver))
+            )
             sys.exit()
 
         # has VirtualRouting?
@@ -229,14 +237,18 @@ class SpatiaLiteConnection(sqlite3.Connection):
         try:
             s_has = self.execute(sql).fetchone()[0]
         except self.OperationalError:
-            print("Error: spatialite has not VirtualRouting... Please check libraries.")
+            logger.warning(
+                "Error: spatialite has not VirtualRouting... Please check libraries."
+            )
             sys.exit()
 
         if int(s_has) != 1:
-            print("Error: VirtualRouting is not active... Sequences will be stopped.")
+            logger.warning(
+                "Error: VirtualRouting is not active... Sequences will be stopped."
+            )
             sys.exit()
 
-        print("check OK. routing available.")
+        logger.info("check OK. routing available.")
 
     # check table exists or not
     def ch_exists_table(self, s_tbl):
@@ -254,7 +266,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         else:
             s_tbl = gt_or_tbl
             if s_col is None:
-                print("if gt_or_tbl is not GTBL, s_col is mandatory.")
+                logger.warning("if gt_or_tbl is not GTBL, s_col is mandatory.")
 
         result = [d_colsinfo["name"] for d_colsinfo in self.get_columnsdef(s_tbl)]
 
@@ -326,7 +338,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                     sql = sql.replace("create table", "create temp table")
                 self.execute(sql)
             else:
-                print("You must give at least one of ll_coldef and flg_pk.")
+                logger.warning("You must give at least one of ll_coldef and flg_pk.")
                 return
         else:
             ll_coldef = [
@@ -355,10 +367,10 @@ class SpatiaLiteConnection(sqlite3.Connection):
     # drop table
     def drop_table(self, gt_or_tbl, db_prefix=None):
         if self.get_spatialite_version() < "5.0.0":
-            print(
+            logger.info(
                 f"Spatialite version is older for DropTable ({self.get_spatialite_version()})."
             )
-            print(f"So the prosess uses DropGeoTable instead.")
+            logger.info(f"So the prosess uses DropGeoTable instead.")
             self.drop_geotable(gt_or_tbl, db_prefix=db_prefix)
         else:
             s_tbl = self.get_tblname(gt_or_tbl)
@@ -381,10 +393,10 @@ class SpatiaLiteConnection(sqlite3.Connection):
             self.execute(f"""DROP TABLE IF EXISTS "{s_tbl}";""")  # deprecated
 
         else:
-            print(
+            logger.info(
                 f"Spatialite version is newer for DropGeoTable ({self.get_spatialite_version()})."
             )
-            print(f"So the prosess uses DropTable instead.")
+            logger.info(f"So the prosess uses DropTable instead.")
             self.drop_table(gt_or_tbl, db_prefix=db_prefix)
 
     # add unique index
@@ -395,7 +407,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         )
         try:
             self.execute(sql)
-            print(
+            logger.info(
                 (
                     'A unique index was successfully added on "{tbl}"."{col}"'.format(
                         tbl=s_tbl, col=s_col
@@ -403,7 +415,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 )
             )
         except self.OperationalError:
-            print(
+            logger.info(
                 (
                     'It seems to already have unique index "{}_{}". Pass process.'.format(
                         s_tbl, s_col
@@ -417,7 +429,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         sql = """create index "ix_{0}_{1}" on "{0}" ("{1}");""".format(s_tbl, s_col)
         try:
             self.execute(sql)
-            print(
+            logger.info(
                 (
                     'An index was successfully added on "{tbl}"."{col}"'.format(
                         tbl=s_tbl, col=s_col
@@ -426,7 +438,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
             )
 
         except self.OperationalError:
-            print(
+            logger.info(
                 (
                     'It seems to already have index "{}_{}". Process was skipped.'.format(
                         s_tbl, s_col
@@ -444,7 +456,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         """
         self.execute(sql.format(tbl=s_tbl, col=s_col))
 
-        print(('The index "{}_{}" was dropped.'.format(s_tbl, s_col)))
+        logger.info(('The index "{}_{}" was dropped.'.format(s_tbl, s_col)))
 
     # add spatial index
     def add_spindex(self, gt_or_tbl, s_gc=None):
@@ -453,11 +465,13 @@ class SpatiaLiteConnection(sqlite3.Connection):
         flg = self.execute(sql.format(s_tbl, s_gc)).fetchone()[0]
 
         if flg is None:  # if there is no spatial index, create it.
-            print(('creating spatial index on "{}" of table "{}".'.format(s_gc, s_tbl)))
+            logger.info(
+                ('creating spatial index on "{}" of table "{}".'.format(s_gc, s_tbl))
+            )
             sql = """select CreateSpatialIndex('{}','{}');""".format(s_tbl, s_gc)
             self.execute(sql)
         elif flg == 1:
-            print("It seems to be already spatial index. Pass process.")
+            logger.info("It seems to be already spatial index. Pass process.")
 
     # drop spatial index
     def drop_spindex(self, gt_or_tbl, s_gc=None):
@@ -473,10 +487,10 @@ class SpatiaLiteConnection(sqlite3.Connection):
         l_col = [d["name"] for d in ld_coldef]
         if s_col in l_col:
             if if_exists == "skip":
-                print(f'Column "{s_col}" already exists. Process was skipped.')
+                logger.info(f'Column "{s_col}" already exists. Process was skipped.')
                 return s_col
             elif if_exists == "replace":
-                print(f'Column "{s_col}" already exists. It will be replaced.')
+                logger.info(f'Column "{s_col}" already exists. It will be replaced.')
                 self.drop_column(s_tbl, s_col)
             else:
                 raise ValueError(
@@ -508,7 +522,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
     # add PK_UID column
     def add_pkuid_column(self, gt_or_tbl, refresh=False):
         s_tbl = gt_or_tbl.name if isinstance(gt_or_tbl, GTBL) else gt_or_tbl
-        print(f"""adding PK_UID column to "{s_tbl}"...""")
+        logger.info(f"""adding PK_UID column to "{s_tbl}"...""")
 
         # PRIMARY KEY はテーブル作成後には追加できないので、新規にテーブルを追加する必要がある
         s_tbl_tmp = self.get_temptblname()
@@ -541,7 +555,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         # refresh table
         self.refresh_table(s_tbl) if refresh else None
 
-        print(f"""adding PK_UID column to "{s_tbl}" was completed.""")
+        logger.info(f"""adding PK_UID column to "{s_tbl}" was completed.""")
 
     # drop column
     def drop_column(self, gt_or_tbl, s_col=None):
@@ -551,7 +565,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif isinstance(gt_or_tbl, (str,)):
             s_tbl = gt_or_tbl
         else:
-            print(("given parameter {} is invalid.".format(gt_or_tbl)))
+            logger.warning(("given parameter {} is invalid.".format(gt_or_tbl)))
             return 0
 
         s_tbl_temp = self.get_temptblname()
@@ -566,7 +580,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif isinstance(gt_or_tbl, (str,)):
             s_tbl = gt_or_tbl
         else:
-            print(("given parameter {} is invalid.".format(gt_or_tbl)))
+            logger.warning(("given parameter {} is invalid.".format(gt_or_tbl)))
             return 0
 
         s_tbl_temp = self.get_temptblname()
@@ -641,15 +655,17 @@ class SpatiaLiteConnection(sqlite3.Connection):
             if overwrite:
                 self.drop_geotable(s_tbl_dst)
             else:
-                print(("{}--- Warning ---".format(os.linesep)))
-                print(
+                logger.warning(("{}--- Warning ---".format(os.linesep)))
+                logger.warning(
                     (
                         'table "{}" is already exists and overwrite flg is not assigned to True...'.format(
                             s_tbl_dst
                         )
                     )
                 )
-                print(("Cloning table process is not applied.".format(s_tbl_dst)))
+                logger.warning(
+                    ("Cloning table process is not applied.".format(s_tbl_dst))
+                )
                 return 0
 
         if l_options is None:
@@ -684,15 +700,17 @@ class SpatiaLiteConnection(sqlite3.Connection):
             if overwrite:
                 self.drop_geotable(s_tbl_dst)
             else:
-                print(("{}--- Warning ---".format(os.linesep)))
-                print(
+                logger.warning(("{}--- Warning ---".format(os.linesep)))
+                logger.warning(
                     (
                         'table "{}" is already exists and overwrite flg is not assigned to True...'.format(
                             s_tbl_dst
                         )
                     )
                 )
-                print(("Cloning table process is not applied.".format(s_tbl_dst)))
+                logger.warning(
+                    ("Cloning table process is not applied.".format(s_tbl_dst))
+                )
                 return 0
 
         if l_options is None:
@@ -795,7 +813,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif isinstance(gt_or_tbl_src, (str,)):
             s_tbl_src = gt_or_tbl_src
         else:
-            print(("given parameter {} is invalid.".format(gt_or_tbl_src)))
+            logger.warning(("given parameter {} is invalid.".format(gt_or_tbl_src)))
             return 0
 
         # マルチモードへの統合が有効になっている場合、いったんキャストしたテーブルを生成する
@@ -817,7 +835,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 s_db, s_tbl_src, s_tbl_dst
             )
             result = self.execute(sql).fetchone()[0]
-            print(("Clone execution result is {}".format(result)))
+            logger.info(("Clone execution result is {}".format(result)))
 
         if flg_drop is True:  # オリジナルのテーブルを削除
             self.drop_geotable(s_tbl_src)
@@ -828,7 +846,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         it may have multiple geometry column, no GTBL object will be returned.
         """
 
-        print(('rename "{}" to "{}"'.format(s_tbl_old, s_tbl_new)))
+        logger.info(('rename "{}" to "{}"'.format(s_tbl_old, s_tbl_new)))
 
         # 新しいテーブルを生成
         self.clone_table(s_tbl_old, s_tbl_new, l_options=l_options)
@@ -862,7 +880,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         s_tbl = self.get_tblname(gt_or_tbl)
 
         if isinstance(gt_or_tbl, (str,)) and flg_except_gc is True:
-            print("when tblname is given then flg_except_gc must be set False")
+            logger.warning("when tblname is given then flg_except_gc must be set False")
             return 0  # 処理終了
 
         sql = """pragma table_info("{}");""".format(s_tbl)
@@ -911,8 +929,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif i == 0:
             return "projected"  # 投影座標系
         else:
-            print(os.linesep)
-            print(('Error: given epsg "{}" is invalid.'.format(i_epsg)))
+            logger.warning(('Error: given epsg "{}" is invalid.'.format(i_epsg)))
             return 0
 
     # make valid geometry （return geometry column name）
@@ -963,7 +980,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 );
             """.format(tbl=s_tbl_cover, epsg=i_epsg_dst)
         else:
-            print(f"{self.get_method_name()}: given parameter is something wrowg...: ")
+            logger.warning(
+                f"{self.get_method_name()}: given parameter is something wrowg...: "
+            )
             return
 
         l_extent_nesw = list(self.execute(sql).fetchone())
@@ -1031,7 +1050,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
             )
             s_type_abr = "ptz"
         else:
-            print("given parameter: s_dimension is strange.")
+            logger.warning("given parameter: s_dimension is strange.")
             return 0
 
         return GTBL(self, s_tbl, i_epsg, s_type_abr, s_gc)
@@ -1059,17 +1078,19 @@ class SpatiaLiteConnection(sqlite3.Connection):
             geom_type, i_epsg = self.get_type_and_epsg(s_tbl, s_gc_src)
             geom_type_abr = self.get_type_abr(geom_type)
         else:
-            print(f"{self.get_method_name()}: given parameter is something wrong")
-            print(("given gt_or_tbl is {}".format(gt_or_tbl)))
-            print(("given s_gc_src is {}".format(s_gc_src)))
-            print(("given s_gc_dst is {}".format(s_gc_dst)))
+            logger.warning(
+                f"{self.get_method_name()}: given parameter is something wrong"
+            )
+            logger.warning(("given gt_or_tbl is {}".format(gt_or_tbl)))
+            logger.warning(("given s_gc_src is {}".format(s_gc_src)))
+            logger.warning(("given s_gc_dst is {}".format(s_gc_dst)))
             return 0  # 処理終了
 
         if s_gc_dst is None:  # ジオメトリカラム名を与えない場合は自動付与
             s_gc_dst = "geom_{}_{}".format(geom_type_abr, i_epsg)
 
         # ジオメトリカラムの差し替え
-        print(
+        logger.info(
             (
                 'geometry column "{gc_src}" of table "{tbl}" will be renamed to "{gc_dst}".'.format(
                     tbl=s_tbl, gc_src=s_gc_src, gc_dst=s_gc_dst
@@ -1156,7 +1177,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 self.drop_geotable(s_tbl_dst)
                 s_temptbl = s_tbl_dst
             else:
-                print(
+                logger.warning(
                     (
                         'the table "{}" cannot be created because it is already exists.'.format(
                             s_tbl_dst
@@ -1216,7 +1237,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 self.drop_geotable(s_tbl_dst)
                 s_tbl_temp = s_tbl_dst
             else:
-                print(
+                logger.warning(
                     (
                         'the table "{}" cannot be created because it is already exists.'.format(
                             s_tbl_dst
@@ -1252,7 +1273,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
             else:
                 gt = GTBL(self, s_tbl_temp, i_epsg_src, type_abr, s_gc_dst)
         else:
-            print(
+            logger.warning(
                 ("imported data may be invalid...: {}".format(os.path.split(p_shp)[1]))
             )
             return 0
@@ -1263,7 +1284,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
 
         # 読み込んだデータを統合 -> s_tbl_dst
         if flg_append:
-            print(('append table "{}" to "{}"'.format(gt.name, s_tbl_dst)))
+            logger.info(('append table "{}" to "{}"'.format(gt.name, s_tbl_dst)))
 
             # 読み込んだデータを統合 -> s_tbl_dst
             self.append_table(gt, s_tbl_dst, flg_multi=flg_multi)
@@ -1341,9 +1362,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
         )
 
         if new_layer is None:
-            print("Error while copying layer")
+            logger.warning("Error while copying layer")
         else:
-            print("Copy layer succeeded")
+            logger.info("Copy layer succeeded")
 
         # データベースとShapefileを閉じます
         database.Destroy()
@@ -1368,7 +1389,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
             self.commit()
             gtbl = self.recov_geomcol(s_tbl_dst, i_epsg_dst, gtbl.type_abr, s_gc_dst)
 
-        print("Import process was done.")
+        logger.info("Import process was done.")
 
         return gtbl
 
@@ -1492,13 +1513,13 @@ class SpatiaLiteConnection(sqlite3.Connection):
         ):
             lat_max = lat_max_or_t_nesw
         else:
-            print("invalid some of coordinate values.")
+            logger.warning("invalid some of coordinate values.")
 
             return 0
 
         # do nothing when given mesh_level is invalid
         if mesh_level not in (1, 2, 3, "5x", "2x", "half", "quarter", "eighth"):
-            print(("invalid mesh_level: {}".format(mesh_level)))
+            logger.warning(("invalid mesh_level: {}".format(mesh_level)))
 
             return 0
 
@@ -1523,7 +1544,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif ellipsoid == "bessel":
             i_epsg = 4301
         else:
-            print('given parameter ellipsoid: "{}" is invalid.')
+            logger.warning('given parameter ellipsoid: "{}" is invalid.')
             return 0
 
         ll_coldef = [["mesh_code", "INTEGER"]]
@@ -1770,7 +1791,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
             );
         """.format(w, s, e, n, i_epsg_src, i_epsg_dst)
         l_nesw_dst = list(self.execute(sql).fetchone())
-        print(
+        logger.info(
             (
                 "tranfomed value: x1={}, x2={}, y1={}, y2={}".format(
                     l_nesw_dst[3], l_nesw_dst[1], l_nesw_dst[2], l_nesw_dst[0]
@@ -1786,7 +1807,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
     ):
         if use_virtual_knn:
             # KNN使用モード ：KNNはPythonからのループでは落ちる（原因不明）ので、ひとまず利用しない。
-            print("get and update nearest neighbor using Virtual KNN")
+            logger.info("get and update nearest neighbor using Virtual KNN")
             rows = self.execute(
                 f"""
                 SELECT "ROWID"
@@ -1821,7 +1842,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
 
         else:
             # KNNを使用しない場合、Min(ST_Distance)で対応する
-            print("get and update nearest neighbor without using Virtual KNN")
+            logger.info("get and update nearest neighbor without using Virtual KNN")
             s_tbl_temp = self.get_temptblname("temp")
             sql = f"""
                 DROP TABLE IF EXISTS "{s_tbl_temp}";
@@ -1865,7 +1886,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         """
 
         self.ch_able_routing()
-        print("adding node id column for routing...")
+        logger.info("adding node id column for routing...")
 
         s_db_alies = f"'{s_db_alies}'" if s_db_alies is not None else "NULL"
         sql = f"""
@@ -1873,17 +1894,19 @@ class SpatiaLiteConnection(sqlite3.Connection):
         """
         try:
             self.execute(sql)
-            print(f'successfully added column "{s_col_from}" and "{s_col_to}"')
+            logger.info(f'successfully added column "{s_col_from}" and "{s_col_to}"')
         except sqlite3.OperationalError as e:
-            print(e)
-            print(f"Column {s_col_from} and {s_col_to} are already exists for routing.")
+            logger.warning(e)
+            logger.warning(
+                f"Column {s_col_from} and {s_col_to} are already exists for routing."
+            )
 
         if s_tbl_nodes_gt is None:
             return s_col_from, s_col_to
 
         # create geotable/spatialview of nodes with node id
 
-        print("creating geotable of nodes.")
+        logger.info("creating geotable of nodes.")
         gt_nodes = self.set_gtbl(s_tbl_nodes_gt, gt_lines.epsg, "pt")
         self.create_table(gt_nodes)
         if s_tbl_nodes_gv is None:
@@ -1952,7 +1975,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
     ):
         self.ch_able_routing()
 
-        print("creating routing data.")
+        logger.info("creating routing data.")
 
         s_col_cost = "'{}'".format(s_col_cost) if s_col_cost is not None else "NULL"
         s_col_name = "'{}'".format(s_col_name) if s_col_name is not None else "NULL"
@@ -1987,12 +2010,12 @@ class SpatiaLiteConnection(sqlite3.Connection):
         )
 
         if self.execute(sql).fetchone()[0] == 1:
-            print("routing data was successfully created.")
+            logger.info("routing data was successfully created.")
         else:
             s_msg = self.execute("""SELECT CreateRouting_GetLastError();""").fetchone()[
                 0
             ]
-            print(('create routing exit with exception: "{}"'.format(s_msg)))
+            logger.warning(('create routing exit with exception: "{}"'.format(s_msg)))
 
     # extract nodes point data from routing network
     def extract_routing_nodes(
@@ -2132,7 +2155,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         )
 
         d_closest_point = dict(self.execute(sql).fetchone())
-        print(
+        logger.info(
             (
                 "closest point id:{}, dist_m:{}".format(
                     d_closest_point["id"], d_closest_point["dist_m"]
@@ -2169,10 +2192,12 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 l_fetch["f_geometry_column"],
             )
         elif len(ll_fetch) == 0:
-            print("no table and/or geometry column was found. please check them.")
+            logger.warning(
+                "no table and/or geometry column was found. please check them."
+            )
             return None
         else:
-            print(
+            logger.warning(
                 (
                     'geotable "{}" has multiple geometry column. please identify the geometry column.'.format(
                         s_tbl
@@ -2211,7 +2236,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 s_type_abr = self.get_type_abr(s_geomtype)
             gt = GTBL(self, gt_or_tbl, i_epsg, s_type_abr, s_gc)
         else:
-            print(f"{self.get_method_name()}: given parameter is something wrong")
+            logger.warning(
+                f"{self.get_method_name()}: given parameter is something wrong"
+            )
             return 0  # 処理終了
 
         return gt
@@ -2229,13 +2256,13 @@ class SpatiaLiteConnection(sqlite3.Connection):
 
         else:
             if epsg is None:
-                print(
+                logger.warning(
                     'if you give s_tbl instead of gtbl object, parameter "epsg" must not be None.'
                 )
                 return 0
 
             if s_type_abr is None:
-                print(
+                logger.warning(
                     'if you give s_tbl instead of gtbl object, parameter "s_type_abr" must not be None.'
                 )
                 return 0
@@ -2272,7 +2299,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif isinstance(gt_or_tbl, (str,)):
             s_tbl = gt_or_tbl
         else:
-            print("get_tblname: given parameter is something wrong")
+            logger.warning("get_tblname: given parameter is something wrong")
             return 0  # 処理終了
 
         return s_tbl
@@ -2286,9 +2313,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif isinstance(gt_or_tbl, (str,)) and s_gc is not None:
             s_tbl = gt_or_tbl
         else:
-            print("get_tblname_and_gc: given parameter is something wrong")
-            print(("given gt_or_tbl is {}".format(gt_or_tbl)))
-            print(("given s_gc is {}".format(s_gc)))
+            logger.warning("get_tblname_and_gc: given parameter is something wrong")
+            logger.warning(("given gt_or_tbl is {}".format(gt_or_tbl)))
+            logger.warning(("given s_gc is {}".format(s_gc)))
             return 0  # 処理終了
 
         return s_tbl, s_gc
@@ -2355,7 +2382,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif dtype is bytes:
             return "BLOB"
         else:
-            print(('given type "{}" might be strange.'.format(dtype)))
+            logger.warning(('given type "{}" might be strange.'.format(dtype)))
             return dtype
 
     # get primary key column name
@@ -2373,7 +2400,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         for row in rows:
             if row[5] == 1:
                 return row[1]
-        print(f'the table "{s_tbl}" has no primary key column. return None.')
+        logger.warning(f'the table "{s_tbl}" has no primary key column. return None.')
         return None
 
     # 呼び出し元のメソッド名を返す（メッセージ表示用）
@@ -2419,7 +2446,7 @@ class GTBL(object):
         if len([r["pk"] for r in l_row if r["pk"] == 1]) == 1:
             s_pk = [r["name"] for r in l_row if r["pk"] == 1][0]
         elif len([r["pk"] for r in l_row if r["pk"] == 1]) > 1:
-            print(f"""Multiple Primary Key columns in "{self.name}".""")
+            logger.warning(f"""Multiple Primary Key columns in "{self.name}".""")
             s_pk = None
         else:
             s_pk = None

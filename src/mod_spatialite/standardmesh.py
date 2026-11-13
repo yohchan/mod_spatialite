@@ -7,6 +7,10 @@
 spatialiteと独立で扱えるものはこちらに入れ込む。conが必要なものについてはmod_spatialiteへ。
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # ある位置のメッシュコードを返す
 def get_mesh_index(
@@ -118,7 +122,7 @@ def get_mesh_index(
         return meshcode
 
     else:
-        print(f"invalid mesh_level: {mesh_level}")
+        logger.warning(f"invalid mesh_level: {mesh_level}")
         return "invalid mesh_level"
 
 
@@ -205,7 +209,7 @@ def get_unitsize(mesh_level: int or str) -> tuple:
         return unitlon, unitlat
 
     else:
-        print(f"invalid mesh_level: {mesh_level}")
+        logger.warning(f"invalid mesh_level: {mesh_level}")
         return tuple()
 
 
@@ -237,7 +241,7 @@ def detect_meshlevel(meshcode: str) -> int or str:
         mesh_level = 0
 
     if mesh_level == 0:
-        print(f"invalid meshcode moge: {meshcode}")
+        logger.warning(f"invalid meshcode moge: {meshcode}")
 
     return mesh_level
 
@@ -310,7 +314,7 @@ def get_stdmeshcode2wkt(meshcode: str) -> tuple:
 
     # 1/20細分（12桁）は未実装
     if mesh_level == "twentieth":
-        print(f"twentieth mesh is not supported: {meshcode}")
+        logger.warning(f"twentieth mesh is not supported: {meshcode}")
         return tuple()
 
     # 東西南北端の座標
@@ -371,7 +375,7 @@ def get_stdmeshcode2wkt(meshcode: str) -> tuple:
         return wkt, (minlon, minlat), (maxlon, maxlat)
 
     else:
-        print(f"invalid meshcode hoge: {meshcode}")
+        logger.warning(f"invalid meshcode hoge: {meshcode}")
         return tuple()
 
 
