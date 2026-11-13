@@ -92,7 +92,9 @@ def backup(p_repo: Path, s_label: str) -> Path:
 
 def main() -> None:
     o_parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    o_parser.add_argument("label", help="コピー先のフォルダ名（例: pre_revival_20261113）")
+    o_parser.add_argument(
+        "label", help="コピー先のフォルダ名（例: pre_revival_20261113）"
+    )
     o_args = o_parser.parse_args()
     p_repo = Path(__file__).resolve().parent.parent
     backup(p_repo, o_args.label)

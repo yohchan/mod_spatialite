@@ -34,7 +34,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
     """
 
     def __init__(self, *args, p_mod_spatialite=None, **kwargs):
-        os.putenv("SPATIALITE_SECURITY", "relaxed")  # 2021-10-06 なんとこれで有効にできるらしい！
+        os.putenv(
+            "SPATIALITE_SECURITY", "relaxed"
+        )  # 2021-10-06 なんとこれで有効にできるらしい！
         os.environ["SPATIALITE_SECURITY"] = "relaxed"
         print(os.environ.get("SPATIALITE_SECURITY"))
 
@@ -63,7 +65,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
                         ),
                     )
 
-                del kwargs["acv"]  # 辞書の要素を削除（そのまま残っているとsqlite3.ConnectionでInvalidになる。）
+                del kwargs[
+                    "acv"
+                ]  # 辞書の要素を削除（そのまま残っているとsqlite3.ConnectionでInvalidになる。）
 
         except KeyError:
             pass
@@ -82,7 +86,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
             # 配置換え（src/mod_spatialite/ への移動）前と同じく、リポジトリ直下の proj.db を読む。
             # Windows での SpatiaLite・proj.db の場所の決め方は見直し予定（OPEN_ITEMS 参照）
             p_projdb = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                ),
                 "proj.db",
             )
             self.execute(f"""SELECT PROJ_SetDatabasePath('{p_projdb}');""")
@@ -105,15 +111,17 @@ class SpatiaLiteConnection(sqlite3.Connection):
         # 標準ライブラリパスからロードするため不要
         if sys.platform == "win32":
             if self.p_mod_spatialite is not None:
-                os.environ["PATH"] = f'{self.p_mod_spatialite};{os.environ["PATH"]}'
-                os.environ[
-                    "PATH"
-                ] = f'{os.path.join(self.p_mod_spatialite, "mod_spatialite")};{os.environ["PATH"]}'
+                os.environ["PATH"] = f"{self.p_mod_spatialite};{os.environ['PATH']}"
+                os.environ["PATH"] = (
+                    f"{os.path.join(self.p_mod_spatialite, 'mod_spatialite')};{os.environ['PATH']}"
+                )
             else:
-                p_mod = "C:/Dropbox/Files/Yoh_scripts/Git_yoh/mod_spatialite/mod_spatialite"
-                os.environ[
-                    "PATH"
-                ] = f'{os.path.abspath(p_mod)};{"mod_spatialite"};{os.environ["PATH"]}'
+                p_mod = (
+                    "C:/Dropbox/Files/Yoh_scripts/Git_yoh/mod_spatialite/mod_spatialite"
+                )
+                os.environ["PATH"] = (
+                    f"{os.path.abspath(p_mod)};{'mod_spatialite'};{os.environ['PATH']}"
+                )
 
         # mod_spatialiteの読み込み
         self.isolation_level = ""
@@ -121,7 +129,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
         self.execute("SELECT load_extension('mod_spatialite');")
 
         # メタデータを登録してSpatiaLiteDBとする。
-        self.execute("""SELECT InitSpatialMetaData(1);""")  # 1はトランザクション有効（高速）
+        self.execute(
+            """SELECT InitSpatialMetaData(1);"""
+        )  # 1はトランザクション有効（高速）
         self.isolation_level = None
 
         # SpatiaLiteのバージョンを返す
@@ -295,9 +305,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         self.execute(
             """
             INSERT INTO "{tbl}" VALUES (NULL, BuildMbr({w}, {s}, {e}, {n}, {epsg}));
-        """.format(
-                tbl=gt_window.name, w=w, s=s, e=e, n=n, epsg=gt_window.epsg
-            )
+        """.format(tbl=gt_window.name, w=w, s=s, e=e, n=n, epsg=gt_window.epsg)
         )
 
         return gt_window
@@ -693,7 +701,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
             sql = f"""
                 SELECT CreateClonedTable(
                     '{s_db_src}', '{s_tbl_src}', '{s_tbl_dst}', {i_transaction},
-                    {', '.join([f"'{s_opt}'" for s_opt in l_options])}
+                    {", ".join([f"'{s_opt}'" for s_opt in l_options])}
                 );
             """
         self.execute(sql)
@@ -838,9 +846,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         else:
             sql = """
                 select "name" from "SQLITE_MASTER" where "type" is 'table' and "name" like '{}';
-            """.format(
-                s_likephrase
-            )
+            """.format(s_likephrase)
         rows = self.execute(sql)
         l_tbl = sorted([i["name"] for i in rows])
 
@@ -872,7 +878,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
         return ld_coldef
 
     # get geometry type of target column
-    def get_geomtype(self, gt_or_tbl, s_gc=None):  # （登録されている）ジオメトリタイプを取得する
+    def get_geomtype(
+        self, gt_or_tbl, s_gc=None
+    ):  # （登録されている）ジオメトリタイプを取得する
         s_tbl, s_gc = self.get_tblname_and_gc(gt_or_tbl, s_gc)
         sql = """pragma table_info("{}");""".format(s_tbl)
         # print(sql)
@@ -926,12 +934,12 @@ class SpatiaLiteConnection(sqlite3.Connection):
 
         sql = """
             update "{tbl}" set "{gc}" = ST_MakeValid("{gc}") where ST_IsValid("{gc}") != 1;
-        """.format(
-            tbl=s_tbl, gc=s_gc
-        )
+        """.format(tbl=s_tbl, gc=s_gc)
         self.execute(sql)
 
-        return s_gc  # flg_addcol = True の場合はカラム名が変わるので、戻り値として与える
+        return (
+            s_gc  # flg_addcol = True の場合はカラム名が変わるので、戻り値として与える
+        )
 
     # get x,y of each min and max with list
     def get_extent(self, gt_or_tbl_cover, i_epsg_dst=None):
@@ -947,17 +955,13 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 select ST_MaxY(geom) as y2, ST_MaxX(geom) as x2, ST_MinY(geom) as y1, ST_MinX(geom) as x1
                 from (select GetLayerExtent('{tbl}') as geom
                 );
-            """.format(
-                tbl=s_tbl_cover
-            )
+            """.format(tbl=s_tbl_cover)
         elif isinstance(i_epsg_dst, int):
             sql = """
                 select ST_MaxY(geom) as y2, ST_MaxX(geom) as x2, ST_MinY(geom) as y1, ST_MinX(geom) as x1
                 from (select ST_Transform(GetLayerExtent('{tbl}'), {epsg}) as geom
                 );
-            """.format(
-                tbl=s_tbl_cover, epsg=i_epsg_dst
-            )
+            """.format(tbl=s_tbl_cover, epsg=i_epsg_dst)
         else:
             print(f"{self.get_method_name()}: given parameter is something wrowg...: ")
             return
@@ -1111,9 +1115,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         if l_col_ignore is None:
             sql = """
                 SELECT ElementaryGeometries('{}', '{}', '{}', '{}', '{}', {});
-            """.format(
-                s_tbl_src, s_gc, s_tbl_dst, out_pk, out_multi_id, transaction
-            )
+            """.format(s_tbl_src, s_gc, s_tbl_dst, out_pk, out_multi_id, transaction)
 
         else:
             sql = """
@@ -1148,7 +1150,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
         else:
             if not self.ch_exists_table(s_tbl_dst):
                 s_temptbl = s_tbl_dst
-            elif flg_overwrite:  # テーブルが存在する場合、上書きフラグが有効なら先だって削除する
+            elif (
+                flg_overwrite
+            ):  # テーブルが存在する場合、上書きフラグが有効なら先だって削除する
                 self.drop_geotable(s_tbl_dst)
                 s_temptbl = s_tbl_dst
             else:
@@ -1206,7 +1210,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
         else:
             if not self.ch_exists_table(s_tbl_dst):
                 s_tbl_temp = s_tbl_dst
-            elif flg_overwrite:  # テーブルが存在する場合、上書きフラグが有効なら先だって削除する
+            elif (
+                flg_overwrite
+            ):  # テーブルが存在する場合、上書きフラグが有効なら先だって削除する
                 self.drop_geotable(s_tbl_dst)
                 s_tbl_temp = s_tbl_dst
             else:
@@ -1266,7 +1272,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
             # gt = GTBL(s_tbl_dst, gt.epsg, gt.type_abr)
 
             if flg_multi and s_gc_dst is None:
-                gt = self.rename_geomcol(gt)  # todo: 何のためにあるのかイマイチ、、、？　flg_multi必要？
+                gt = self.rename_geomcol(
+                    gt
+                )  # todo: 何のためにあるのかイマイチ、、、？　flg_multi必要？
 
             # gt = gt_new
 
@@ -1595,9 +1603,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
         sql = """
             select ST_MinX(extent), ST_MinY(extent), ST_MaxX(extent), ST_MaxY(extent)
             from (select ST_Collect({gc}) as extent from ({slct_stmt}));
-        """.format(
-            gc=s_gc_src, slct_stmt=sql_select_geom
-        )
+        """.format(gc=s_gc_src, slct_stmt=sql_select_geom)
         # print(sql)
 
         t_extent = self.execute(sql).fetchone()
@@ -1663,9 +1669,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                     )
                 )
             from "{}";
-        """.format(
-            gt_line.gc, i_epsg4len, len_split_m, gt_line.name
-        )
+        """.format(gt_line.gc, i_epsg4len, len_split_m, gt_line.name)
         i_limit = self.execute(sql).fetchone()[0]
         s_tbl_numlist = self.get_temptblname("tbl_numlist")
         self.create_sequential_data(s_tbl_numlist, i_limit)
@@ -1743,9 +1747,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 ST_X(ST_Transform(MakePoint({x}, {y}, {epsg_src}), {epsg_dst})) as x
                 , ST_Y(ST_Transform(MakePoint({x}, {y}, {epsg_src}), {epsg_dst})) as y
             ;
-        """.format(
-            x=x, y=y, epsg_src=i_epsg_src, epsg_dst=i_epsg_dst
-        )
+        """.format(x=x, y=y, epsg_src=i_epsg_src, epsg_dst=i_epsg_dst)
         l_xy_dst = self.execute(sql).fetchone()
         # print('tranfomed value: x={}, y={}'.format(l_xy_dst['x'], l_xy_dst['y']))
 
@@ -1766,9 +1768,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
             from (
                 select ST_Transform(BuildMbr({}, {}, {}, {}, {}), {}) as geom
             );
-        """.format(
-            w, s, e, n, i_epsg_src, i_epsg_dst
-        )
+        """.format(w, s, e, n, i_epsg_src, i_epsg_dst)
         l_nesw_dst = list(self.execute(sql).fetchone())
         print(
             (
@@ -2202,7 +2202,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 "mptm",
                 "mlnm",
                 "mpgm",
-                "ptz" "ptzm",
+                "ptzptzm",
                 "mptz",
                 "mptzm",
             ):
@@ -2252,7 +2252,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
             "mptm",
             "mlnm",
             "mpgm",
-            "ptz" "ptzm",
+            "ptzptzm",
             "mptz",
             "mptzm",
         ):

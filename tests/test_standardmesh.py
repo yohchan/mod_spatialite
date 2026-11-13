@@ -13,7 +13,12 @@ D_EXPECTED: dict[str, tuple[float, float, float, float]] = {
     "53394536": (139.7, 35 + 2 / 3 + 0.025, 139.7125, 35.7),
     "533945361": (139.7, 35 + 2 / 3 + 0.025, 139.70625, 35.7 - 1 / 240),  # 1/2 南西
     "533945364": (139.70625, 35.7 - 1 / 240, 139.7125, 35.7),  # 1/2 北東
-    "5339453612": (139.703125, 35 + 2 / 3 + 0.025, 139.70625, 35.7 - 1 / 240 - 1 / 480),  # 1/4
+    "5339453612": (
+        139.703125,
+        35 + 2 / 3 + 0.025,
+        139.70625,
+        35.7 - 1 / 240 - 1 / 480,
+    ),  # 1/4
     "5339452": (139.6875, 35 + 2 / 3, 139.75, 35 + 2 / 3 + 1 / 24),  # 5倍 南東
 }
 
@@ -44,7 +49,9 @@ def test_stdmeshcode2wkt_roundtrip() -> None:
     }
     for s_code, level in d_level.items():
         lon_min, lat_min, lon_max, lat_max = _bbox(s_code)
-        s_back = ms.get_mesh_index((lon_min + lon_max) / 2, (lat_min + lat_max) / 2, level)
+        s_back = ms.get_mesh_index(
+            (lon_min + lon_max) / 2, (lat_min + lat_max) / 2, level
+        )
         assert s_back == s_code, f"{s_code} -> {s_back}"
 
 
@@ -63,7 +70,12 @@ def test_generate_stdmesh() -> None:
     l_rows = con.execute(
         f'SELECT mesh_code, MbrMinX("{gt.gc}"), MbrMinY("{gt.gc}") FROM "{gt.name}" ORDER BY mesh_code'
     ).fetchall()
-    assert [str(r[0]) for r in l_rows] == ["533945361", "533945362", "533945363", "533945364"]
+    assert [str(r[0]) for r in l_rows] == [
+        "533945361",
+        "533945362",
+        "533945363",
+        "533945364",
+    ]
     con.close()
 
 
@@ -73,7 +85,9 @@ def _random_codes(i_n: int, mesh_level: int | str, i_seed: int = 0) -> list[str]
 
     rng = random.Random(i_seed)
     return [
-        ms.get_mesh_index(rng.uniform(122.0, 153.9), rng.uniform(20.0, 45.9), mesh_level)
+        ms.get_mesh_index(
+            rng.uniform(122.0, 153.9), rng.uniform(20.0, 45.9), mesh_level
+        )
         for _ in range(i_n)
     ]
 
@@ -85,8 +99,9 @@ def test_meshcode_sql_matches_wkt() -> None:
     con = SpatiaLiteConnection(":memory:")
     for level in (1, 2, 3, "half", "quarter"):
         l_codes = _random_codes(500, level) + [
-            c for c in D_EXPECTED if ms.detect_meshlevel(c) == level
-            or (level == "quarter" and len(c) == 10)
+            c
+            for c in D_EXPECTED
+            if ms.detect_meshlevel(c) == level or (level == "quarter" and len(c) == 10)
         ]
         con.execute("DROP TABLE IF EXISTS t")
         con.execute("CREATE TABLE t (c_text TEXT, c_int INTEGER)")

@@ -64,7 +64,10 @@ def test_invalid_arg_messages() -> None:
     assert SpatiaLiteConnection.get_tblname(123) == 0
     assert SpatiaLiteConnection.get_tblname_and_gc(123) == 0
     assert SpatiaLiteConnection.get_tblname("tbl_x") == "tbl_x"
-    assert SpatiaLiteConnection.get_tblname_and_gc("tbl_x", "pt_4612") == ("tbl_x", "pt_4612")
+    assert SpatiaLiteConnection.get_tblname_and_gc("tbl_x", "pt_4612") == (
+        "tbl_x",
+        "pt_4612",
+    )
 
     # get_method_name は呼び出し元のメソッド名を返す（インスタンスからも呼べる）
     con = SpatiaLiteConnection(":memory:")

@@ -74,7 +74,9 @@ def test_zipshps2spatialite_readonly_dir() -> None:
             )
             assert gt is not None
             assert con.execute("SELECT count(*) FROM gt_m").fetchone()[0] == 6
-            assert con.execute("SELECT DISTINCT city FROM gt_m").fetchone()[0] == "札幌市"
+            assert (
+                con.execute("SELECT DISTINCT city FROM gt_m").fetchone()[0] == "札幌市"
+            )
             assert sorted(os.listdir(p_zipdir)) == ["m_01.zip", "m_02.zip"]
             # 一時ディレクトリが残っていないこと
             assert sorted(os.listdir(p_dir)) == ["zips"]

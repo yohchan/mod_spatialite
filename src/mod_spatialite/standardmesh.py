@@ -401,7 +401,13 @@ def get_meshlist_from_extent(
 # Python で1区画ずつ WKT を作らず、SQL の中で計算させる（CREATE TABLE AS やビューに埋め込む用途）。
 # 区画の定義は get_stdmeshcode2wkt と同じ（JIS X 0410）。
 # 1次: 緯度 2/3 度×経度 1 度、2次: 1/8、3次: 1/10、1/2・1/4: 2分割ごとに 1=南西 2=南東 3=北西 4=北東
-D_SQL_MESH_LEVELS: dict[int | str, int] = {1: 4, 2: 6, 3: 8, "half": 9, "quarter": 10}  # レベル: 桁数
+D_SQL_MESH_LEVELS: dict[int | str, int] = {
+    1: 4,
+    2: 6,
+    3: 8,
+    "half": 9,
+    "quarter": 10,
+}  # レベル: 桁数
 
 
 def get_meshcode_sql_extent(
@@ -442,9 +448,14 @@ def get_meshcode_sql_extent(
         l_lon.append(f"({_digit(8)} / 80.0)")
         l_lat.append(f"({_digit(7)} / 120.0)")
         unitlon, unitlat = "(1.0 / 80)", "(1.0 / 120)"
-    if mesh_level in ("half", "quarter"):  # 1/2地域メッシュ（9桁目: 1=南西 2=南東 3=北西 4=北東）
+    if mesh_level in (
+        "half",
+        "quarter",
+    ):  # 1/2地域メッシュ（9桁目: 1=南西 2=南東 3=北西 4=北東）
         l_lon.append(f"((({_digit(9)} - 1) % 2) / 160.0)")
-        l_lat.append(f"((({_digit(9)} - 1) / 2) / 240.0)")  # INTEGER 同士の除算は切り捨て
+        l_lat.append(
+            f"((({_digit(9)} - 1) / 2) / 240.0)"
+        )  # INTEGER 同士の除算は切り捨て
         unitlon, unitlat = "(1.0 / 160)", "(1.0 / 240)"
     if mesh_level == "quarter":  # 1/4地域メッシュ（10桁目）
         l_lon.append(f"((({_digit(10)} - 1) % 2) / 320.0)")
@@ -471,12 +482,12 @@ def get_meshcode_sql_mbr(s_code_expr: str, mesh_level: int | str, i_epsg: int) -
     s_lon_min, s_lat_min, s_lon_max, s_lat_max = get_meshcode_sql_extent(
         s_code_expr, mesh_level
     )
-    return f"BuildMbr({s_lon_min}, {s_lat_min}, {s_lon_max}, {s_lat_max}, {int(i_epsg)})"
+    return (
+        f"BuildMbr({s_lon_min}, {s_lat_min}, {s_lon_max}, {s_lat_max}, {int(i_epsg)})"
+    )
 
 
-def get_meshcode_sql_point(
-    s_code_expr: str, mesh_level: int | str, i_epsg: int
-) -> str:
+def get_meshcode_sql_point(s_code_expr: str, mesh_level: int | str, i_epsg: int) -> str:
     """
     メッシュコードから区画の中心点（MakePoint）を作る SQL 式を返す。
     代表点は区画の中心（経緯度の中点）とする。

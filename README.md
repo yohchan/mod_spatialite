@@ -58,7 +58,9 @@ from mod_spatialite import SpatiaLiteConnection
 con = SpatiaLiteConnection("example.sqlite")  # ":memory:" も可
 
 print(con.get_spatialite_version())  # SpatiaLite の版
-print(con.execute("SELECT spatialite_version();").fetchone()[0])  # sqlite3 の接続として SQL も流せる
+print(
+    con.execute("SELECT spatialite_version();").fetchone()[0]
+)  # sqlite3 の接続として SQL も流せる
 ```
 
 ### GTBL（テーブルとジオメトリカラムの組）
@@ -67,16 +69,16 @@ print(con.execute("SELECT spatialite_version();").fetchone()[0])  # sqlite3 の�
 con.create_table("tbl_example", ll_coldef=[["col_1", "INTEGER"], ["col_2", "TEXT"]])
 gt = con.add_geomcol("tbl_example", i_epsg=4612, s_geomtype="POINT")  # GTBL を返す
 
-gt.name      # テーブル名 => tbl_example
-gt.gc        # ジオメトリカラム名 => geom_pt_4612（指定しなければ自動で命名）
-gt.epsg      # => 4612
-gt.type      # => POINT
+gt.name  # テーブル名 => tbl_example
+gt.gc  # ジオメトリカラム名 => geom_pt_4612（指定しなければ自動で命名）
+gt.epsg  # => 4612
+gt.type  # => POINT
 gt.type_abr  # ジオメトリタイプの略称 => pt（pt, ln, pg, mpt, mln, ...）
 
-con.discard_geomcol(gt)                            # ジオメトリカラムの登録解除
-con.recov_geomcol(gt)                              # ジオメトリカラムの登録
+con.discard_geomcol(gt)  # ジオメトリカラムの登録解除
+con.recov_geomcol(gt)  # ジオメトリカラムの登録
 gt = con.rename_geomcol(gt, s_gc_dst="geom_renamed")  # ジオメトリカラムの改名
-con.drop_geotable(gt)                              # ジオテーブルの削除
+con.drop_geotable(gt)  # ジオテーブルの削除
 ```
 
 ### 標準地域メッシュ
@@ -85,8 +87,10 @@ con.drop_geotable(gt)                              # ジオテーブルの削除
 from mod_spatialite import standardmesh as ms
 
 s_code = ms.get_mesh_index(141.35, 43.06, 3)  # 経度・緯度から 3 次メッシュコード
-ms.detect_meshlevel(s_code)                   # => 3
-s_expr = ms.get_meshcode_sql_mbr("meshcode", 3, 4612)  # メッシュコード列から区画を作る SQL 式
+ms.detect_meshlevel(s_code)  # => 3
+s_expr = ms.get_meshcode_sql_mbr(
+    "meshcode", 3, 4612
+)  # メッシュコード列から区画を作る SQL 式
 ```
 
 ## 開発
