@@ -19,6 +19,10 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 Windows 用の絶対パス（C:/Dropbox/.../mod_spatialite/mod_spatialite）が win32 分岐にハードコードされている（mod_spatialite.py の initialize）
 - [ ] 2026-11-13 generate_stdmesh は Python で 1 区画ずつ WKT を作って INSERT する（全国規模には不向き）。get_mesh_index の境界上の精度問題と 1/10・1/20 細分は未実装
 - [ ] 2026-11-13 測地線距離の専用メソッドが無い（ST_Distance(a, b, 1) と MakeLine を生 SQL で書けば足りる）
+- [ ] 2026-11-13 get_tblname / get_tblname_and_gc は staticmethod なのに、引数が不正なときの分岐で self を参照する（その分岐に入ると NameError。ruff F821、mod_spatialite.py 2270・2284 行付近）
+- [ ] 2026-11-13 `.format` に使われない引数がある（ruff F523、mod_spatialite.py 639・682 行付近）。意図した値が SQL・メッセージに入っていない可能性を確認する
+- [ ] 2026-11-13 ruff の設定は入れたが、一括整形（7 ファイルが対象）と既存の指摘（行長 E501 が 122 件ほか、計 135 件）の修正は未実施。配置換えの前後どちらで行うかを決めてから行う
+- [ ] 2026-11-13 新しく作る DB のページサイズが既定の 4096 のまま。列の多い表（1 行約 2KB、2022_MSW の 234 列の表など）では 1 ページに 1 行しか入らず、ほぼ 2 倍の大きさになる（合成データで page_size 65536 にすると約半分を確認）。新規作成時に page_size を指定できる引数（InitSpatialMetaData より前に PRAGMA page_size）か、既存 DB のページサイズを変える補助（PRAGMA page_size → VACUUM）を設ける。優先度中
 - [ ] 2026-11-13 zipshps2spatialite のポリゴン取り込みが遅い（全国 471,024 行で 211.8 秒、dbf だけなら 66.7 秒。2022_MSW で測定）。1 本ずつ一時表に ImportSHP してから CloneTable で追記する方式が原因と見ている。優先度低
 
 ### 設計の見直し
