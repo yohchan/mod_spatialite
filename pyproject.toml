@@ -13,3 +13,23 @@ dependencies = []
 
 [tool.setuptools]
 py-modules = ["mod_spatialite", "mod_standardmesh"]
+
+[dependency-groups]
+# 開発時だけの依存。開発依存のため、editable で参照する利用側の依存解決には入らない。
+# 下限は 2026-11-13 の導入時点の版（tests/ がこの版で全件合格することを確認）。
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.14",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+# 既存コードは black（行長 88）で整形してきたため、同じ行長に揃える。
+# 一括整形・一括修正はまだ行っていない（差分が大きく、利用側の調査と衝突するため。OPEN_ITEMS 参照）。
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
