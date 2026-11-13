@@ -38,11 +38,12 @@ class SpatiaLiteConnection(sqlite3.Connection):
     """
 
     def __init__(self, *args, p_mod_spatialite=None, **kwargs):
-        os.putenv(
-            "SPATIALITE_SECURITY", "relaxed"
-        )  # 2021-10-06 なんとこれで有効にできるらしい！
-        os.environ["SPATIALITE_SECURITY"] = "relaxed"
-        logger.info(os.environ.get("SPATIALITE_SECURITY"))
+        # SpatiaLite のファイル入出力系の関数（ImportSHP・ExportSHP 等）を使えるようにする。
+        # 拡張を読み込む前に設定する必要がある。利用側が既に設定していれば上書きしない。
+        os.environ.setdefault("SPATIALITE_SECURITY", "relaxed")
+        logger.info(
+            "SPATIALITE_SECURITY=%s", os.environ.get("SPATIALITE_SECURITY")
+        )
 
         # If no db file is exist, then create it.
         if args[0] != ":memory:" and not os.path.isfile(args[0]):
