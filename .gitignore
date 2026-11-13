@@ -1,40 +1,26 @@
-/hoge.sqlite
-/mod_spatialite/libfreexl-1.dll
-/mod_spatialite_old/libfreexl-1.dll
-/mod_spatialite/libgcc_s_seh-1.dll
-/mod_spatialite_old/libgcc_s_seh_64-1.dll
-/mod_spatialite_old/libgeos-3-5-0.dll
-/mod_spatialite/libgeos-3-6-2.dll
-/mod_spatialite/libgeos_c-1.dll
-/mod_spatialite_old/libgeos_c-1.dll
-/mod_spatialite/libiconv-2.dll
-/mod_spatialite_old/libiconv-2.dll
-/mod_spatialite_old/liblwgeom-2-3-0.dll
-/mod_spatialite/liblzma-5.dll
-/mod_spatialite_old/liblzma-5.dll
-/mod_spatialite_old/libproj-9.dll
-/mod_spatialite/libproj-13.dll
-/mod_spatialite/librttopo-1.dll
-/mod_spatialite/libsqlite3-0.dll
-/mod_spatialite_old/libsqlite3-0.dll
-/mod_spatialite/libstdc++-6.dll
-/mod_spatialite_old/libstdc++_64-6.dll
-/mod_spatialite/libwinpthread-1.dll
-/mod_spatialite/libxml2-2.dll
-/mod_spatialite_old/libxml2-2.dll
-/mod_spatialite/mod_spatialite.dll
-/mod_spatialite_old/mod_spatialite.dll
-/mod_spatialite.py.bak
-/mod_spatialite/sqlite3.exe
-/mod_spatialite_old/sqlite3.exe
-/mod_spatialite/zlib1.dll
-/mod_spatialite_old/zlib1.dll
-/.idea/dbnavigator.xml
-/.idea/misc.xml
-/.idea/mod_spatialite.iml
-/.idea/modules.xml
-/.idea/codeStyles/Project.xml
-/.idea/inspectionProfiles/Project_Default.xml
-/.idea/vagrant.xml
-/.idea/vcs.xml
-/.idea/workspace.xml
+# Windows 用 SpatiaLite の DLL 群・同梱 proj.db（手元に置く実行時ファイル。git では配布しない）
+/mod_spatialite/
+/mod_spatialite_old/
+/proj.db
+
+# Python・ビルド・テストの生成物
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# 仮想環境
+.venv/
+.venv_*/
+
+# IDE・エディタ
+/.idea/
+.vscode/
+
+# 作業用 DB
+*.sqlite
+*.sqlite3
+*.db-journal
