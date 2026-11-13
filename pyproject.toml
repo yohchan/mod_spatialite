@@ -27,7 +27,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 # 既存コードは black（行長 88）で整形してきたため、同じ行長に揃える。
-# 一括整形・一括修正はまだ行っていない（差分が大きく、利用側の調査と衝突するため。OPEN_ITEMS 参照）。
+# 一括整形は 1c90525 で実施済み（.git-blame-ignore-revs に登録）。既存の Lint 指摘の修正は未実施（OPEN_ITEMS 参照）。
 line-length = 88
 target-version = "py310"
 # README 等の Markdown 内のコード例は、コメントの桁揃えを保つため整形しない
