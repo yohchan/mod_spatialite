@@ -1,0 +1,5 @@
+# git blame で飛ばすコミット（書式のみの一括変更）。
+# 使い方: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# 2026-11-13 ruff format による一括整形
+1c90525f2182ab6a752e721d30a7f56f2a2eb07c
