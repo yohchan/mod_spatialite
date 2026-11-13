@@ -7,15 +7,15 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 
 ### 既知の問題点（2026-11-13、利用側からの照会の検証で判明）
 - [ ] 2026-11-13 attach_db() が URI（`file:...?mode=ro`）を受け付けない（生 SQL の ATTACH は uri=True 接続なら可）
-- [ ] 2026-11-13 コンストラクタは主接続のパスにファイルが無いと空ファイルを作り、毎回 InitSpatialMetaData を実行する。URI を主接続に渡すと open() で落ちる
+- [done 2026-11-14] コンストラクタは主接続のパスにファイルが無いと空ファイルを作り、毎回 InitSpatialMetaData を実行する。URI を主接続に渡すと open() で落ちる
 - [ ] 2026-11-13 GTBL 系のヘルパー（get_gtbl_from_metadata・get_primary_key・ch_exists_table 等）が main しか見ず、ATTACH 先の表を扱えない
 - [done 2026-11-13] zipshps2spatialite が zip と同じディレクトリに一時展開する（読み取り専用の置き場で PermissionError）→ 97b5332 で既定をシステムの一時ディレクトリへ
 - [ ] 2026-11-13 zipshps2spatialite / shp2spatialite の append モードで、ジオメトリ列名が Geometry のまま残る
 - [ ] 2026-11-13 get_nearest_neighbour は経緯度に平面の ST_Distance を使い、インデックスなしの全組合せになる。KNN 分岐は SpatiaLite 5.1.0 で未検証
 - [ ] 2026-11-13 create_geometry_view は表名に大文字があると失敗する（views_geometry_columns の小文字制約）。overwrite=True は同名オブジェクトを種類を問わず削除する
 - [ ] 2026-11-13 create_table の flg_temp が効かない（小文字の "create table" を置換しているが、列定義ありのときの SQL は大文字）
-- [ ] 2026-11-13 disconnect() が既定で VACUUM と upgrade_db を実行する（大きい DB では重い）
-- [ ] 2026-11-13 import 時・接続時の print と、SPATIALITE_SECURITY 環境変数の設定（import・接続時の副作用）
+- [done 2026-11-14] disconnect() が既定で VACUUM と upgrade_db を実行する（大きい DB では重い）
+- [done 2026-11-14] import 時・接続時の print と、SPATIALITE_SECURITY 環境変数の設定（import・接続時の副作用）
 - [ ] 2026-11-13 Windows 用の DLL フォルダの既定値が、旧開発環境の絶対パスのまま win32 分岐にハードコードされている（src/mod_spatialite/_core.py の initialize）
 - [ ] 2026-11-13 generate_stdmesh は Python で 1 区画ずつ WKT を作って INSERT する（全国規模には不向き）。get_mesh_index の境界上の精度問題と 1/10・1/20 細分は未実装
 - [ ] 2026-11-13 測地線距離の専用メソッドが無い（ST_Distance(a, b, 1) と MakeLine を生 SQL で書けば足りる）
@@ -23,10 +23,12 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 `.format` に使われない引数がある（ruff F523、src/mod_spatialite/_core.py の clone_table・create_cloned_table）。意図した値が SQL・メッセージに入っていない可能性を確認する
 - [done 2026-11-13] ruff による一括整形（1c90525。.git-blame-ignore-revs に登録、Markdown は対象外）
 - [ ] 2026-11-13 ruff の既存の指摘（行長 E501 ほか）の修正は未実施。各段階で触る箇所から順に直す
-- [ ] 2026-11-13 新しく作る DB のページサイズが既定の 4096 のまま。列の多い表（例: 200 列を超え 1 行約 2KB の表）では 1 ページに 1 行しか入らず、ほぼ 2 倍の大きさになる（合成データで page_size 65536 にすると約半分を確認）。新規作成時に page_size を指定できる引数（InitSpatialMetaData より前に PRAGMA page_size）か、既存 DB のページサイズを変える補助（PRAGMA page_size → VACUUM）を設ける。優先度中
+- [done 2026-11-14] 新しく作る DB のページサイズが既定の 4096 のまま。列の多い表（例: 200 列を超え 1 行約 2KB の表）では 1 ページに 1 行しか入らず、ほぼ 2 倍の大きさになる（合成データで page_size 65536 にすると約半分を確認）。新規作成時に page_size を指定できる引数（InitSpatialMetaData より前に PRAGMA page_size）か、既存 DB のページサイズを変える補助（PRAGMA page_size → VACUUM）を設ける。優先度中
 - [ ] 2026-11-13 zipshps2spatialite のポリゴン取り込みが遅い（数十万行規模のポリゴンで、dbf の属性だけを取り込む場合の約 3 倍の時間がかかる）。1 本ずつ一時表に ImportSHP してから CloneTable で追記する方式が原因と見ている。優先度低
 
 ### 設計の見直し
+- [ ] 2026-11-14 トランザクションを扱うコンテキストマネージャ（例: `with con.transaction():` で BEGIN し、正常終了で COMMIT、例外で ROLLBACK）を加えるか。接続は自動コミットのため 1 文ごとにコミットされ、大量の書き込みが遅い（数万行で数秒が十数分になる環境がある）。既存の begin() は BEGIN を出すだけで ROLLBACK しない。採否は未定
+- [ ] 2026-11-14 print から置き換えた logging のメッセージの文面（英語・日本語の混在、誤字）の整理
 - [ ] 2026-11-13 マルチプラットフォーム（Linux/WSL・Windows）で配布できる形にする。SpatiaLite の DLL 群・proj.db は SpatiaLite 側の配布物のため、このリポジトリには含めず再配布もしない（利用者が別途入手する）。現行の「モジュールと同じ場所に置いた DLL・proj.db を PATH に足す」方式を、利用者が入手した SpatiaLite の場所を指定・検出できる方式に改める
 - [ ] 2026-11-13 smoke_test_windows.py（未追跡。Windows/OSGeo4W 用の動作確認）を、上記の方式に合わせて tests/ に取り込む（Windows のときだけ実行）
 - [ ] 2026-11-13 mod_spatialite_old/（旧世代の Windows 用 DLL。コードからの参照なし）の退役
@@ -45,6 +47,21 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 旧配置（以前の開発場所に残る旧メインリポジトリの写し。4bd68fe で停止し、7251b24 以降の修正を含まない）を sys.path 注入・exec で読んでいる利用側は、各利用側でこのリポジトリの editable 参照へ切り替える（このリポジトリでは行わない）
 
 ## 変更の記録
+
+### 2026-11-14 段階 3: 副作用と接続の作法（挙動の変更あり）
+- 出力: 旧 = import 時・接続時・各メソッドで print。新 = logging（ロガーは `mod_spatialite` 配下）。経過・成功は INFO（既定では表示されない）、引数の誤り・処理を飛ばして戻る分岐・エラーは WARNING（既定で stderr に出る）。import 時は何も出さない
+  - 利用側の直し方: 経過を見たい場合は `logging.basicConfig(level=logging.INFO)` 等を設定する。print の出力を前提にした処理があれば logging に合わせる
+- SPATIALITE_SECURITY: 旧 = 接続のたびに relaxed に上書き。新 = 未設定のときだけ relaxed（既定は従来どおり）
+  - 利用側の直し方: 不要
+- ファイルの作成と URI: 旧 = ファイルが無ければ自前で空ファイルを作る（URI を渡すと失敗）。新 = 作らない（sqlite3 自身が作る）。`SpatiaLiteConnection("file:a.sqlite?mode=ro", uri=True)` で読み取り専用で開ける（ファイルが無ければ作らずに sqlite3.OperationalError）。普通のパスに uri=True を付けた形も従来どおり新規作成される
+  - 利用側の直し方: 不要
+- メタデータの初期化: 旧 = 接続のたびに InitSpatialMetaData(1)。新 = 主接続（main）に spatial_ref_sys が無いときだけ実行（既存 DB で毎回出ていた "already exists" のエラー表示がなくなる）
+  - 利用側の直し方: 不要
+- ページサイズ: 追加 = コンストラクタの `i_page_size`（新しい DB のときだけ有効）、メソッド `set_page_size(i_page_size)`（既存 DB。VACUUM で作り直す）
+  - 利用側の直し方: 不要（列の多い表を持つ DB は、新規作成時に `i_page_size=65536` 等を指定すると小さくなる）
+- disconnect(): 旧 = 既定で VACUUM と upgrade_db を実行。新 = 既定は閉じるだけ
+  - 利用側の直し方: 閉じるときに VACUUM・upgrade_db をしたい場合は `disconnect(flg_vacuum=True, flg_upgrade=True)` と書く
+- 自動コミット（isolation_level=None）であることと、大量の書き込みは明示の BEGIN/COMMIT/ROLLBACK で囲むこと、`with con:` は BEGIN しないことを、SpatiaLiteConnection の docstring と README に明記（挙動は変更なし）
 
 ### 2026-11-13 配置換え: src/mod_spatialite/ パッケージ化（挙動の変更なし）
 - 旧→新
