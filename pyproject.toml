@@ -15,11 +15,11 @@ dependencies = []
 py-modules = ["mod_spatialite", "mod_standardmesh"]
 
 [dependency-groups]
-# 開発時だけの依存。開発依存のため、editable で参照する利用側の依存解決には入らない。
-# 下限は 2026-11-13 の導入時点の版（tests/ がこの版で全件合格することを確認）。
+# 開発時だけの依存（テスト・Lint）。利用側の依存解決への影響は確認中（OPEN_ITEMS 参照）。
+# 下限は 2026-11-13 の導入時点の版（tests/ が pytest 9.2.0 で全件合格することを確認）。
 dev = [
     "pytest>=9.2.0",
-    "ruff>=0.14",
+    "ruff>=0.17.5",
 ]
 
 [tool.pytest.ini_options]

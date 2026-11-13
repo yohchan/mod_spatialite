@@ -32,6 +32,12 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 requires-python の引き上げ（現行 >=3.10）と、任意依存 osgeo（GDAL/OGR。shp2spatialite_ogr 等で関数内 import）の宣言。editable で参照する利用側の依存解決に響くため、変更の記録とあわせて行う
 - [ ] 2026-11-13 パッケージ構成（平置きの py-modules mod_spatialite・mod_standardmesh）の見直し。利用側の import と editable 参照に響くため、変更の記録とあわせて行う
 
+### リポジトリの運用
+- [ ] 2026-11-13 開発依存グループ（pytest・ruff。4c58810）の追加が、editable で参照する利用側（2022_MSW・2020_PV）の `uv lock --check`／`uv run --locked` に影響しないかを確認する（影響する場合は変更の記録に旧→新と直し方〔利用側で lock を取り直す〕を書く）
+- [ ] 2026-11-13 手元の git 設定が core.autocrlf=true のため、新しいファイルが作業ツリーでは CRLF で書き出される。.gitattributes（現行は `* text=auto` と mod_spatialite.py の eol=lf）で全テキストの改行を LF に固定するかを決める
+- [ ] 2026-11-13 .gitignore がルートの `/mod_spatialite/`（Windows 用 DLL のフォルダ）を除外している。配置換えで同じ名前のパッケージフォルダを作ると丸ごと無視されるため、配置換えの前に DLL の置き場所と除外の規則を見直す
+- [ ] 2026-11-13 データ置き場（~/data/mod_spatialite、実体 D:\Projects\mod_spatialite）のバックアップの方式・頻度を決めて README に書く
+
 ### 利用側
 - [ ] 2026-11-13 旧配置（Dropbox 側の旧メインリポジトリ。4bd68fe で停止し、7251b24 以降の修正を含まない）を sys.path 注入・exec で読んでいる利用側は、各リポジトリ側でこのリポジトリの参照へ切り替える（このリポジトリでは行わない）
 
