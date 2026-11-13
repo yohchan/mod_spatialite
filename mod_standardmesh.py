@@ -395,3 +395,96 @@ def get_meshlist_from_extent(
         lat += unitlat
 
     return mesh_list
+
+
+# メッシュコードから区画・代表点を作る SQL 式
+# Python で1区画ずつ WKT を作らず、SQL の中で計算させる（CREATE TABLE AS やビューに埋め込む用途）。
+# 区画の定義は get_stdmeshcode2wkt と同じ（JIS X 0410）。
+# 1次: 緯度 2/3 度×経度 1 度、2次: 1/8、3次: 1/10、1/2・1/4: 2分割ごとに 1=南西 2=南東 3=北西 4=北東
+D_SQL_MESH_LEVELS: dict[int | str, int] = {1: 4, 2: 6, 3: 8, "half": 9, "quarter": 10}  # レベル: 桁数
+
+
+def get_meshcode_sql_extent(
+    s_code_expr: str, mesh_level: int | str
+) -> tuple[str, str, str, str]:
+    """
+    メッシュコードの列名（または SQL 式）から、区画の南西端・北東端の経緯度を計算する SQL 式を返す。
+
+    Args:
+        s_code_expr: メッシュコードの列名または SQL 式（例: '"mesh_code"', 'm."MESH_ID"'）。
+            INTEGER 列でも TEXT 列でもよい（内部で TEXT に CAST する）。
+        mesh_level: 1, 2, 3, "half"（1/2地域メッシュ・9桁）, "quarter"（1/4地域メッシュ・10桁）のいずれか。
+            桁数がレベルと合わない行の結果は保証しない（呼び出し側で length() 等により絞ること）。
+
+    Returns:
+        (lon_min, lat_min, lon_max, lat_max) の SQL 式の tuple
+    """
+    if mesh_level not in D_SQL_MESH_LEVELS:
+        raise ValueError(
+            f"mesh_level must be one of {list(D_SQL_MESH_LEVELS)}: {mesh_level!r}"
+        )
+
+    s_c = f"CAST(({s_code_expr}) AS TEXT)"
+
+    def _digit(i_pos: int, i_len: int = 1) -> str:
+        return f"CAST(substr({s_c}, {i_pos}, {i_len}) AS INTEGER)"
+
+    # 1次メッシュ
+    l_lon: list[str] = [f"(100 + {_digit(3, 2)})"]
+    l_lat: list[str] = [f"({_digit(1, 2)} / 1.5)"]
+    unitlon, unitlat = "1.0", "(1.0 / 1.5)"
+
+    if mesh_level != 1:  # 2次メッシュ
+        l_lon.append(f"({_digit(6)} / 8.0)")
+        l_lat.append(f"({_digit(5)} / 12.0)")
+        unitlon, unitlat = "(1.0 / 8)", "(1.0 / 12)"
+    if mesh_level not in (1, 2):  # 3次メッシュ
+        l_lon.append(f"({_digit(8)} / 80.0)")
+        l_lat.append(f"({_digit(7)} / 120.0)")
+        unitlon, unitlat = "(1.0 / 80)", "(1.0 / 120)"
+    if mesh_level in ("half", "quarter"):  # 1/2地域メッシュ（9桁目: 1=南西 2=南東 3=北西 4=北東）
+        l_lon.append(f"((({_digit(9)} - 1) % 2) / 160.0)")
+        l_lat.append(f"((({_digit(9)} - 1) / 2) / 240.0)")  # INTEGER 同士の除算は切り捨て
+        unitlon, unitlat = "(1.0 / 160)", "(1.0 / 240)"
+    if mesh_level == "quarter":  # 1/4地域メッシュ（10桁目）
+        l_lon.append(f"((({_digit(10)} - 1) % 2) / 320.0)")
+        l_lat.append(f"((({_digit(10)} - 1) / 2) / 480.0)")
+        unitlon, unitlat = "(1.0 / 320)", "(1.0 / 480)"
+
+    s_lon_min = "(" + " + ".join(l_lon) + ")"
+    s_lat_min = "(" + " + ".join(l_lat) + ")"
+    return (
+        s_lon_min,
+        s_lat_min,
+        f"({s_lon_min} + {unitlon})",
+        f"({s_lat_min} + {unitlat})",
+    )
+
+
+def get_meshcode_sql_mbr(s_code_expr: str, mesh_level: int | str, i_epsg: int) -> str:
+    """
+    メッシュコードから区画のポリゴン（BuildMbr）を作る SQL 式を返す。
+
+    例: f'CREATE TABLE t AS SELECT mesh_code, {get_meshcode_sql_mbr("mesh_code", "half", 4612)} AS pg_4612 FROM src'
+    （CREATE TABLE AS で作った列はジオメトリ列として登録されないため、必要なら RecoverGeometryColumn を実行する）
+    """
+    s_lon_min, s_lat_min, s_lon_max, s_lat_max = get_meshcode_sql_extent(
+        s_code_expr, mesh_level
+    )
+    return f"BuildMbr({s_lon_min}, {s_lat_min}, {s_lon_max}, {s_lat_max}, {int(i_epsg)})"
+
+
+def get_meshcode_sql_point(
+    s_code_expr: str, mesh_level: int | str, i_epsg: int
+) -> str:
+    """
+    メッシュコードから区画の中心点（MakePoint）を作る SQL 式を返す。
+    代表点は区画の中心（経緯度の中点）とする。
+    """
+    s_lon_min, s_lat_min, s_lon_max, s_lat_max = get_meshcode_sql_extent(
+        s_code_expr, mesh_level
+    )
+    return (
+        f"MakePoint(({s_lon_min} + {s_lon_max}) / 2.0, "
+        f"({s_lat_min} + {s_lat_max}) / 2.0, {int(i_epsg)})"
+    )

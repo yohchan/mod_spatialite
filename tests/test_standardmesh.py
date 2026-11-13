@@ -67,9 +67,64 @@ def test_generate_stdmesh() -> None:
     con.close()
 
 
+def _random_codes(i_n: int, mesh_level: int | str, i_seed: int = 0) -> list[str]:
+    # 日本付近の範囲からランダムな点を取り、get_mesh_index でメッシュコードにする
+    import random
+
+    rng = random.Random(i_seed)
+    return [
+        ms.get_mesh_index(rng.uniform(122.0, 153.9), rng.uniform(20.0, 45.9), mesh_level)
+        for _ in range(i_n)
+    ]
+
+
+def test_meshcode_sql_matches_wkt() -> None:
+    # SQL 式の区画・中心点が get_stdmeshcode2wkt と一致すること（TEXT 列・INTEGER 列の両方）
+    from mod_spatialite import SpatiaLiteConnection
+
+    con = SpatiaLiteConnection(":memory:")
+    for level in (1, 2, 3, "half", "quarter"):
+        l_codes = _random_codes(500, level) + [
+            c for c in D_EXPECTED if ms.detect_meshlevel(c) == level
+            or (level == "quarter" and len(c) == 10)
+        ]
+        con.execute("DROP TABLE IF EXISTS t")
+        con.execute("CREATE TABLE t (c_text TEXT, c_int INTEGER)")
+        con.executemany("INSERT INTO t VALUES (?, ?)", [(c, int(c)) for c in l_codes])
+        for s_col in ("c_text", "c_int"):
+            s_mbr = ms.get_meshcode_sql_mbr(s_col, level, 4612)
+            s_pt = ms.get_meshcode_sql_point(s_col, level, 4612)
+            l_rows = con.execute(
+                f"SELECT c_text, MbrMinX(g), MbrMinY(g), MbrMaxX(g), MbrMaxY(g), X(p), Y(p), SRID(g), SRID(p)"
+                f" FROM (SELECT c_text, {s_mbr} AS g, {s_pt} AS p FROM t)"
+            ).fetchall()
+            for row in l_rows:
+                t_exp = _bbox(row[0])
+                t_act = tuple(row[1:5])
+                assert all(
+                    math.isclose(a, e, abs_tol=1e-9) for a, e in zip(t_act, t_exp)
+                ), f"{level} {s_col} {row[0]}: {t_act} != {t_exp}"
+                assert math.isclose(row[5], (t_exp[0] + t_exp[2]) / 2, abs_tol=1e-9)
+                assert math.isclose(row[6], (t_exp[1] + t_exp[3]) / 2, abs_tol=1e-9)
+                assert row[7] == 4612 and row[8] == 4612
+                # 中心点のメッシュコードが元に戻ること
+                assert ms.get_mesh_index(row[5], row[6], level) == row[0]
+    con.close()
+
+
+def test_meshcode_sql_invalid_level() -> None:
+    try:
+        ms.get_meshcode_sql_mbr("c", "5x", 4612)
+    except ValueError:
+        return
+    raise AssertionError("ValueError was not raised for unsupported mesh_level")
+
+
 if __name__ == "__main__":
     test_stdmeshcode2wkt_extent()
     test_stdmeshcode2wkt_roundtrip()
     test_stdmeshcode2wkt_unsupported()
     test_generate_stdmesh()
+    test_meshcode_sql_matches_wkt()
+    test_meshcode_sql_invalid_level()
     print("all standardmesh tests passed.")

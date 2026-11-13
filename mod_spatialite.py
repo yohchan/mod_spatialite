@@ -1359,6 +1359,44 @@ class SpatiaLiteConnection(sqlite3.Connection):
 
         return gtbl
 
+    # zip を一時ディレクトリに展開し、指定拡張子のファイルのパスを順に渡す
+    # zip のあるディレクトリには何も書かない（原票の置き場を読み取り専用のまま扱えるように）。
+    # 一時ディレクトリは処理の成否にかかわらず削除する。
+    @staticmethod
+    def _iter_zip_members(p_zip, s_ext, p_dir_tmp=None, l_ext_extract=None):
+        import os
+        import tempfile
+        import zipfile
+
+        l_ext_extract = [s_ext] if l_ext_extract is None else l_ext_extract
+        with tempfile.TemporaryDirectory(dir=p_dir_tmp) as p_tmp:
+            with zipfile.ZipFile(p_zip) as zf:
+                l_members = [
+                    s
+                    for s in zf.namelist()
+                    if os.path.splitext(s)[1].lower() in l_ext_extract
+                ]
+                zf.extractall(p_tmp, members=l_members)
+
+            # 階層構造になっている場合があるので walk で探す
+            l_path = sorted(
+                os.path.join(root, s_file)
+                for root, _dirs, files in os.walk(p_tmp)
+                for s_file in files
+                if os.path.splitext(s_file)[1].lower() == s_ext
+            )
+            for p_member in l_path:
+                yield p_member
+
+    @staticmethod
+    def _list_zips(p_zipdir_or_zips, s_pattern="*.zip"):
+        import glob
+        import os
+
+        if isinstance(p_zipdir_or_zips, (list, tuple)):
+            return [str(p) for p in p_zipdir_or_zips]
+        return sorted(glob.glob(os.path.join(str(p_zipdir_or_zips), s_pattern)))
+
     # import zipped shp files to spatialite database
     def zipshps2spatialite(
         self,
@@ -1367,46 +1405,52 @@ class SpatiaLiteConnection(sqlite3.Connection):
         i_epsg_src=4612,
         s_chcode_src="utf-8",
         flg_multi=False,
+        p_dir_tmp=None,
     ):
-        import os
-        import glob
-        import shutil
+        """
+        ディレクトリ内（またはリストで与えた）zip 中のシェープファイルをすべて1つの表に追記する。
 
-        # path_zipのzipファイルを一時ディレクトリに展開する
-        def zip_extract(_p_zip):
-            import zipfile
-            import tempfile
-            import os
-
-            tempdir = tempfile.mkdtemp(dir=os.path.split(_p_zip)[0])  # 解凍先一時ディレクトリを生成
-            zipfile.ZipFile(_p_zip).extractall(tempdir)  # 全部展開
-
-            return tempdir  # 一時ディレクトリパスを戻り値とする
-
-        # フォルダ内の結合するshpファイルのリストを作成
-        l_path_zip = glob.glob("{}/*.zip".format(p_zipshpdir))
-        for path_zip in l_path_zip:
-            # zip展開
-            path_shpdir = zip_extract(path_zip)
-
-            # ディレクトリ内のshpのリストを生成（階層構造になっている場合があるので、globでは足りない）
-            l_path_shp = []
-
-            for root, dirs, files in os.walk(path_shpdir):
-                for _file in files:
-                    if os.path.splitext(_file)[1] == ".shp":
-                        l_path_shp.append(os.path.join(root, _file))
-
-            # shpの読み込み
-            for p_shp in l_path_shp:
+        p_zipshpdir: zip のあるディレクトリ、または zip のパスのリスト
+        p_dir_tmp: 展開用の一時ディレクトリを作る場所。None ならシステムの一時ディレクトリ。
+            2026-11-13 変更: 以前は zip と同じディレクトリに展開していた。
+        """
+        gt = None
+        for path_zip in self._list_zips(p_zipshpdir):
+            for p_shp in self._iter_zip_members(
+                path_zip, ".shp", p_dir_tmp, [".shp", ".shx", ".dbf", ".prj", ".cpg"]
+            ):
                 gt = self.shp2spatialite(
                     p_shp, i_epsg_src, s_chcode_src, s_tbl, flg_multi=flg_multi
                 )
 
-            # 一時ディレクトリの削除
-            shutil.rmtree(path_shpdir)
-
         return gt
+
+    # import attributes (dbf only) of zipped shp files to a table without geometry
+    def zipdbfs2spatialite(
+        self,
+        p_zipdir_or_zips,
+        s_tbl,
+        s_chcode_src="CP932",
+        p_dir_tmp=None,
+        s_pattern="*.zip",
+    ):
+        """
+        zip 中の dbf（シェープの属性）だけを、ジオメトリなしの1つの表に追記する。
+        各行には元の dbf 名（拡張子なし）が dbf_name 列に入る。
+
+        p_zipdir_or_zips: zip のあるディレクトリ、または zip のパスのリスト
+        s_chcode_src: dbf の文字コード（国土数値情報は CP932）
+        p_dir_tmp: 展開用の一時ディレクトリを作る場所。None ならシステムの一時ディレクトリ。
+            zip のあるディレクトリには何も書かない。
+        戻り値: 取り込んだ dbf の数
+        """
+        i_n = 0
+        for path_zip in self._list_zips(p_zipdir_or_zips, s_pattern):
+            for p_dbf in self._iter_zip_members(path_zip, ".dbf", p_dir_tmp):
+                self.dbf2spatialite(p_dbf, s_tbl, s_chcode_src, flg_append=True)
+                i_n += 1
+
+        return i_n
 
     # generate stdmesh
     def generate_stdmesh(
