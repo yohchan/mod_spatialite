@@ -298,10 +298,20 @@ def get_stdmeshcode2wkt(meshcode: str) -> tuple:
     ref: http://www.gikosha.co.jp/fig_blog/mesh.html
     """
 
-    # コード分割
-    (mesh_level, x1d, x2d, x3d, y1d, y2d, y3d, _3d, _4d, _5d, _6d) = split_meshcode(
-        meshcode
+    # コード分割（split_meshcode は 1/20 細分用の _7d を含む12要素を返す）
+    (mesh_level, x1d, x2d, x3d, y1d, y2d, y3d, _3d, _4d, _5d, _6d, _7d) = (
+        split_meshcode(meshcode)
     )
+
+    # 10桁コードは1/4地域メッシュと1/10細分メッシュを桁数で区別できない。
+    # 1/10細分は未実装のため、1/4地域メッシュとして扱う。
+    if mesh_level == "quarter or tenth":
+        mesh_level = "quarter"
+
+    # 1/20細分（12桁）は未実装
+    if mesh_level == "twentieth":
+        print(f"twentieth mesh is not supported: {meshcode}")
+        return tuple()
 
     # 東西南北端の座標
     if mesh_level != 0:  # 1st mesh base
