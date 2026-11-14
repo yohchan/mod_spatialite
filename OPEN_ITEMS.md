@@ -11,9 +11,9 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [done 2026-11-14] GTBL 系のヘルパー（get_gtbl_from_metadata・get_primary_key・ch_exists_table 等）が main しか見ず、ATTACH 先の表を扱えない
 - [done 2026-11-13] zipshps2spatialite が zip と同じディレクトリに一時展開する（読み取り専用の置き場で PermissionError）→ 97b5332 で既定をシステムの一時ディレクトリへ
 - [done 2026-11-14] zipshps2spatialite / shp2spatialite の append モードで、ジオメトリ列名が Geometry のまま残る → 追記しないモードと同じ規則で命名（変更の記録を参照）
-- [ ] 2026-11-14 ch_exists_table・get_tbllist は名前を LIKE で照合するため、表名の _ と % がワイルドカードとして働く（例: gt_a で gtXa にも一致）。完全一致で調べる手段を設ける
+- [done 2026-11-14] ch_exists_table・get_tbllist は名前を LIKE で照合するため、表名の _ と % がワイルドカードとして働く → ch_exists_table に flg_exact を追加（get_tbllist は LIKE のまま）
 - [ ] 2026-11-13 get_nearest_neighbour は経緯度に平面の ST_Distance を使い、インデックスなしの全組合せになる。KNN 分岐は SpatiaLite 5.1.0 で未検証
-- [ ] 2026-11-13 create_geometry_view は表名に大文字があると失敗する（views_geometry_columns の小文字制約）。overwrite=True は同名オブジェクトを種類を問わず削除する
+- [done 2026-11-14] create_geometry_view は表名に大文字があると失敗する（views_geometry_columns の小文字制約）。overwrite=True は同名オブジェクトを種類を問わず削除する → 小文字で登録、削除はビューとその登録行に限定
 - [done 2026-11-14] create_table の flg_temp が効かない（小文字の "create table" を置換しているが、列定義ありのときの SQL は大文字）
 - [done 2026-11-14] disconnect() が既定で VACUUM と upgrade_db を実行する（大きい DB では重い）
 - [done 2026-11-14] import 時・接続時の print と、SPATIALITE_SECURITY 環境変数の設定（import・接続時の副作用）
@@ -21,7 +21,7 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 generate_stdmesh は Python で 1 区画ずつ WKT を作って INSERT する（全国規模には不向き）。get_mesh_index の境界上の精度問題と 1/10・1/20 細分は未実装
 - [ ] 2026-11-13 測地線距離の専用メソッドが無い（ST_Distance(a, b, 1) と MakeLine を生 SQL で書けば足りる）
 - [done 2026-11-13] 2026-11-13 get_tblname / get_tblname_and_gc は staticmethod なのに、引数が不正なときの分岐で self を参照する（その分岐に入ると NameError。ruff F821）
-- [ ] 2026-11-13 `.format` に使われない引数がある（ruff F523、src/mod_spatialite/_core.py の clone_table・create_cloned_table）。意図した値が SQL・メッセージに入っていない可能性を確認する
+- [done 2026-11-14] `.format` に使われない引数がある（ruff F523、clone_table・create_cloned_table）→ 警告文に表名を入れる形に修正（SQL への影響はなかった）
 - [done 2026-11-13] ruff による一括整形（1c90525。.git-blame-ignore-revs に登録、Markdown は対象外）
 - [ ] 2026-11-13 ruff の既存の指摘（行長 E501 ほか）の修正は未実施。各段階で触る箇所から順に直す
 - [done 2026-11-14] 新しく作る DB のページサイズが既定の 4096 のまま。列の多い表（例: 200 列を超え 1 行約 2KB の表）では 1 ページに 1 行しか入らず、ほぼ 2 倍の大きさになる（合成データで page_size 65536 にすると約半分を確認）。新規作成時に page_size を指定できる引数（InitSpatialMetaData より前に PRAGMA page_size）か、既存 DB のページサイズを変える補助（PRAGMA page_size → VACUUM）を設ける。優先度中
@@ -48,6 +48,12 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 旧配置（以前の開発場所に残る旧メインリポジトリの写し。4bd68fe で停止し、7251b24 以降の修正を含まない）を sys.path 注入・exec で読んでいる利用側は、各利用側でこのリポジトリの editable 参照へ切り替える（このリポジトリでは行わない）
 
 ## 変更の記録
+
+### 2026-11-14 create_geometry_view・ch_exists_table の完全一致
+- create_geometry_view: 旧 = 表名・ビュー名に大文字があると登録に失敗。overwrite=True は同名のオブジェクトを種類を問わず削除（同名の表も消えた）。新 = views_geometry_columns に小文字で登録。overwrite=True で消すのは同名のビューとその登録行だけ（同名の表があればエラーで止まる）
+  - 利用側の直し方: 不要（同名の表をビューで置き換える使い方をしていた場合は、表を明示的に消してから呼ぶ）
+- ch_exists_table: 追加 = 引数 `flg_exact`（True で名前を完全一致〔大小区別なし〕で照合）。既定は従来どおり LIKE
+  - 利用側の直し方: 不要（表名に _ を含む表の存在を確かめるときは `flg_exact=True` を推奨）
 
 ### 2026-11-14 シェープの追記取り込みのジオメトリ列名・cast_to_multi
 - shp2spatialite（flg_append=True）・zipshps2spatialite: 旧 = 追記先のジオメトリ列名が "geometry"（返す GTBL の gc は "Geometry"）。flg_multi=True では 2 本目の追記で IntegrityError になり取り込めなかった。新 = 追記しない場合と同じ規則で、`s_gc_dst`、未指定なら `geom_<型>_<EPSG>`（flg_multi なら MULTI の型。例 `geom_mpg_4612`）。追記先の表が既にある場合は、その表の列名に合わせる
