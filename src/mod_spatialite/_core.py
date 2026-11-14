@@ -18,8 +18,10 @@ import os
 import sys
 import types
 import sqlite3
+import contextlib
 import inspect
 import logging
+from collections.abc import Iterator
 
 # import pdb  # for debug
 
@@ -211,6 +213,27 @@ class SpatiaLiteConnection(sqlite3.Connection):
     # begin
     def begin(self):
         self.execute("""BEGIN;""")
+
+    @contextlib.contextmanager
+    def transaction(self) -> Iterator[SpatiaLiteConnection]:
+        """BEGIN で始め、正常に抜けたら COMMIT、例外なら ROLLBACK するコンテキストマネージャ。
+
+        接続は自動コミットのため、大量の書き込みはこれで囲むと 1 回のコミットで済む。
+
+            with con.transaction():
+                con.executemany("INSERT INTO t VALUES (?, ?)", l_rows)
+
+        既にトランザクション中（begin() 等で BEGIN 済み）のときは入れ子にできないため、
+        sqlite3.OperationalError になる。
+        """
+        self.execute("BEGIN;")
+        try:
+            yield self
+        except BaseException:
+            self.rollback()
+            raise
+        else:
+            self.commit()
 
     def set_page_size(self, i_page_size: int) -> int:
         """既存の DB のページサイズを変える（PRAGMA page_size のあと VACUUM で作り直す）。
