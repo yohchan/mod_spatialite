@@ -14,116 +14,54 @@ logger = logging.getLogger(__name__)
 
 # ある位置のメッシュコードを返す
 def get_mesh_index(
-    longitude: int or float, latitude: int or float, mesh_level: int or str = 3
+    longitude: int | float, latitude: int | float, mesh_level: int | str = 3
 ) -> str:
-    # todo: lonlat値が境界上の場合、計算精度の関係で誤った値になる場合がある。
-    import math
+    """経緯度の点を含む標準地域メッシュのコードを返す。
 
-    if mesh_level in (
-        1,
-        2,
-        3,
-        "5x",
-        "2x",
-        "half",
-        "quarter",
-        "eighth",
-        "tenth",
-    ):  # 1st mesh base
-        x_tmp = longitude - 100
-        y_tmp = latitude * 1.5
-
-        n_part = 1.0  # 分割数の設定
-        x1d = math.floor(x_tmp)
-        y1d = math.floor(y_tmp)
-        meshcode = f"{int(y1d)}{int(x1d)}"
-
-        x_tmp = x_tmp - x1d / n_part  # / 1.0
-        y_tmp = y_tmp - y1d / n_part
-        if mesh_level != 1:  # 2nd mesh base
-            n_part = n_part * 8
-            x2d = math.floor(x_tmp * n_part)
-            y2d = math.floor(y_tmp * n_part)
-            meshcode = f"{meshcode}{int(y2d)}{int(x2d)}"
-
-            x_tmp = x_tmp - x2d / n_part  # / 8.0
-            y_tmp = y_tmp - y2d / n_part
-            if mesh_level in (
-                3,
-                "half",
-                "quarter",
-                "eighth",
-                "tenth",
-                "twentieth",
-            ):  # 3rd mesh base
-                n_part = n_part * 10
-                x3d = math.floor(x_tmp * n_part)
-                y3d = math.floor(y_tmp * n_part)
-                meshcode = f"{meshcode}{int(y3d)}{int(x3d)}"
-
-                x_tmp = x_tmp - x3d / n_part  # / 80.0
-                y_tmp = y_tmp - y3d / n_part
-
-                if mesh_level not in (3, "tenth"):  # ext 3rd mesh base
-                    n_part = n_part * 2
-                    x4d = math.floor(x_tmp * n_part)
-                    y4d = math.floor(y_tmp * n_part)
-                    _4d = x4d + y4d * 2 + 1
-                    meshcode = f"{meshcode}{int(_4d)}"
-
-                    x_tmp = x_tmp - x4d / n_part  # / 160.0
-                    y_tmp = y_tmp - y4d / n_part
-                    if mesh_level != "half":  # half mesh base
-                        n_part = n_part * 2
-                        x5d = math.floor(x_tmp * n_part)
-                        y5d = math.floor(y_tmp * n_part)
-                        _5d = x5d + y5d * 2 + 1
-                        meshcode = f"{meshcode}{int(_5d)}"
-
-                        x_tmp = x_tmp - x5d / n_part  # / 320.0
-                        y_tmp = y_tmp - y5d / n_part
-                        if mesh_level != "quarter":  # quarter mesh base = eighth mesh
-                            n_part = n_part * 2
-                            x6d = math.floor(x_tmp * n_part)
-                            y6d = math.floor(y_tmp * n_part)
-                            _6d = x6d + y6d * 2 + 1
-                            meshcode = f"{meshcode}{int(_6d)}"
-
-                elif mesh_level in ("tenth", "twentieth"):  # 10th mesh base
-                    n_part = (
-                        n_part * 10
-                    )  # change division number to 10 for 1/10 division
-                    x4d = math.floor(x_tmp * n_part)
-                    y4d = math.floor(y_tmp * n_part)
-                    meshcode = f"{meshcode}{int(y4d)}{int(x4d)}"  # append y and x direction code
-
-                    x_tmp = x_tmp - x4d / n_part  # / 800.0
-                    y_tmp = y_tmp - y4d / n_part
-                    if mesh_level == "twentieth":  # 20th mesh
-                        n_part = n_part * 2
-                        x5d = math.floor(x_tmp * n_part)
-                        y5d = math.floor(y_tmp * n_part)
-                        meshcode = f"{meshcode}{int(y5d)}{int(x5d)}"  # append y and x direction code
-
-            else:  # ext 2nd mesh base
-                if mesh_level == "5x":  # 5x mesh
-                    n_part = n_part * 2
-                    x3d = math.floor(x_tmp * n_part)
-                    y3d = math.floor(y_tmp * n_part)
-                    _3d = x3d + y3d * 2 + 1
-                    meshcode = f"{meshcode}{int(_3d)}"
-
-                elif mesh_level == "2x":  # 2x mesh
-                    n_part = n_part * 5
-                    x3d = math.floor(x_tmp * n_part) * 2
-                    y3d = math.floor(y_tmp * n_part) * 2
-                    meshcode = f"{meshcode}{int(y3d)}{int(x3d)}5"
-
-        return meshcode
-
-    else:
+    mesh_level: 1, 2, 3, "5x", "2x", "half", "quarter", "eighth", "tenth"
+    境界上の点は北東側のメッシュに入る（格子番号の計算に小さな許容値を入れ、浮動小数の
+    誤差で南西隣のメッシュにならないようにしている。generate_stdmesh と同じ計算）。
+    不正なレベルでは WARNING を出し "invalid mesh_level" を返す。
+    """
+    if mesh_level not in D_MESH_GRID_DIV:
         logger.warning(f"invalid mesh_level: {mesh_level}")
         return "invalid mesh_level"
+
+    i_div = D_MESH_GRID_DIV[mesh_level]
+    i_lat = get_mesh_grid_index(latitude * 1.5, i_div)
+    i_lon = get_mesh_grid_index(longitude, i_div, 100.0)
+    return str(_get_meshcode_from_grid(mesh_level, i_lat, i_lon))
+
+
+def _get_meshcode_from_grid(mesh_level: int | str, i_lat: int, i_lon: int) -> int:
+    """格子番号からメッシュコード（整数）を作る（get_meshcode_sql_from_grid と同じ規則）。"""
+    i_div = D_MESH_GRID_DIV[mesh_level]
+    i_code = (i_lat // i_div) * 100 + (i_lon // i_div)  # 1次（4桁）
+    if mesh_level == 1:
+        return i_code
+    i_s2 = i_div // 8
+    ry, rx = i_lat % i_div, i_lon % i_div
+    i_code = i_code * 100 + (ry // i_s2) * 10 + (rx // i_s2)  # 2次（6桁）
+    if mesh_level == 2:
+        return i_code
+    ry, rx = ry % i_s2, rx % i_s2
+    if mesh_level == "5x":
+        return i_code * 10 + (rx // (i_s2 // 2)) + (ry // (i_s2 // 2)) * 2 + 1
+    if mesh_level == "2x":
+        return i_code * 1000 + (ry * 2) * 100 + (rx * 2) * 10 + 5
+    i_s3 = i_s2 // 10
+    i_code = i_code * 100 + (ry // i_s3) * 10 + (rx // i_s3)  # 3次（8桁）
+    if mesh_level == 3:
+        return i_code
+    ry, rx = ry % i_s3, rx % i_s3
+    if mesh_level == "tenth":
+        return i_code * 100 + ry * 10 + rx
+    i_s = i_s3
+    for _ in range({"half": 1, "quarter": 2, "eighth": 3}[mesh_level]):
+        i_half = i_s // 2
+        i_code = i_code * 10 + (rx // i_half) + (ry // i_half) * 2 + 1
+        ry, rx, i_s = ry % i_half, rx % i_half, i_half
+    return i_code
 
 
 # メッシュレベルに基づいて経度と緯度のメッシュ単位サイズを取得する

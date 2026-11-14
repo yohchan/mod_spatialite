@@ -89,7 +89,7 @@ con.drop_geotable(gt)                              # ジオテーブルの削除
 ```python
 from mod_spatialite import standardmesh as ms
 
-s_code = ms.get_mesh_index(141.35, 43.06, 3)  # 経度・緯度から 3 次メッシュコード
+s_code = ms.get_mesh_index(141.354, 43.0621, 3)  # 経度・緯度から 3 次メッシュコード（"64414278"。境界上の点は北東側の区画）
 ms.detect_meshlevel(s_code)                   # => 3
 s_expr = ms.get_meshcode_sql_mbr("meshcode", 3, 4612)  # メッシュコード列から区画を作る SQL 式
 ```

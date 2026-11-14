@@ -143,3 +143,36 @@ if __name__ == "__main__":
     test_meshcode_sql_matches_wkt()
     test_meshcode_sql_invalid_level()
     print("all standardmesh tests passed.")
+
+
+def test_get_mesh_index_point_on_boundary_goes_to_northeast() -> None:
+    """区画の南西角（境界上の点）は、その区画（北東側）のコードになる。
+
+    旧実装は浮動小数の誤差で、2 倍地域メッシュより細かいレベルの多くの角で南西隣を返していた。
+    """
+    import random
+
+    o_rand = random.Random(1)
+    for mesh_level, i_div in ms.D_MESH_GRID_DIV.items():
+        for _ in range(300):
+            i_lat = o_rand.randrange(int(20 * 1.5 * i_div), int(46 * 1.5 * i_div))
+            i_lon = o_rand.randrange(22 * i_div, 54 * i_div)
+            f_lon, f_lat = 100 + i_lon / i_div, i_lat / (1.5 * i_div)
+            s_code = ms.get_mesh_index(f_lon, f_lat, mesh_level)
+            # 区画の中心のコードと同じ（＝角の点が北東側の区画に入っている）
+            s_center = ms.get_mesh_index(
+                f_lon + 0.5 / i_div, f_lat + 0.5 / (1.5 * i_div), mesh_level
+            )
+            assert s_code == s_center, (mesh_level, f_lon, f_lat)
+
+
+def test_get_mesh_index_known_codes() -> None:
+    # 区画の内部の点（境界から外れた点）は従来と同じ値（旧実装で求めた値）
+    assert ms.get_mesh_index(141.354, 43.0621, 1) == "6441"
+    assert ms.get_mesh_index(141.354, 43.0621, 3) == "64414278"
+    assert ms.get_mesh_index(141.354, 43.0621, "half") == "644142781"
+    assert ms.get_mesh_index(139.000798, 37.333743, "tenth") == "5639000000"
+    # 経度 141.35 は 3 次メッシュの境界上（0.35 / 0.0125 = 28）: 東側の区画になる
+    # （旧実装は浮動小数の誤差で西隣の 64414277 を返していた）
+    assert ms.get_mesh_index(141.35, 43.06, 3) == "64414278"
+    assert ms.get_mesh_index(141.35, 43.06, "nope") == "invalid mesh_level"
