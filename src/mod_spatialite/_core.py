@@ -354,11 +354,26 @@ class SpatiaLiteConnection(sqlite3.Connection):
         logger.info("check OK. routing available.")
 
     # check table exists or not
-    def ch_exists_table(self, s_tbl, s_schema=None, flg_include_views=False):
+    def ch_exists_table(
+        self, s_tbl, s_schema=None, flg_include_views=False, flg_exact=False
+    ):
         """表があるかを返す（s_schema・flg_include_views は get_tbllist と同じ）。
 
-        注意: 名前は LIKE で照合するため、_ と % はワイルドカードとして働く。
+        flg_exact: True なら名前を完全一致（大文字小文字は区別しない）で照合する。
+            False（既定）は従来どおり LIKE で照合するため、_ と % がワイルドカードとして働く。
         """
+        if flg_exact:
+            s_master = (
+                "sqlite_master" if s_schema is None else f'"{s_schema}".sqlite_master'
+            )
+            s_types = "('table', 'view')" if flg_include_views else "('table')"
+            i_n = self.execute(
+                f"""SELECT count(*) FROM {s_master}
+                WHERE "type" IN {s_types} AND "name" = ? COLLATE NOCASE;""",
+                (s_tbl,),
+            ).fetchone()[0]
+            return i_n > 0
+
         result = self.get_tbllist(
             s_tbl, s_schema=s_schema, flg_include_views=flg_include_views
         )
@@ -775,7 +790,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                     )
                 )
                 logger.warning(
-                    ("Cloning table process is not applied.".format(s_tbl_dst))
+                    'Cloning table process to "%s" is not applied.', s_tbl_dst
                 )
                 return 0
 
@@ -820,7 +835,7 @@ class SpatiaLiteConnection(sqlite3.Connection):
                     )
                 )
                 logger.warning(
-                    ("Cloning table process is not applied.".format(s_tbl_dst))
+                    'Cloning table process to "%s" is not applied.', s_tbl_dst
                 )
                 return 0
 
@@ -844,9 +859,25 @@ class SpatiaLiteConnection(sqlite3.Connection):
         pk_uid: str = None,
         overwrite: bool = True,
     ):
+        """ビューを作り、views_geometry_columns に登録する（QGIS 等から空間ビューとして見える）。
+
+        s_slct_stmt: ビューの SELECT 文。ジオメトリ列は gt_ref.gc と同じ名前で出力すること
+        gt_ref: ジオメトリの元になる表（GTBL）
+        pk_uid: ビューの行を識別する列（一意な整数）。None なら gt_ref の主キー
+        overwrite: True なら同名のビューとその登録を消してから作り直す。同名の「表」は
+            消さない（その場合は CREATE VIEW が失敗する）
+
+        views_geometry_columns の各列は小文字で登録する（SpatiaLite のトリガが小文字を要求する）。
+        """
         pk_uid = self.get_primary_key(gt_ref) if pk_uid is None else pk_uid
 
-        self.drop_geotable(s_gv_name) if overwrite else None
+        if overwrite:
+            # DROP VIEW では登録行が消えず、同じ行の再登録が一意制約違反になるため先に消す
+            self.execute(
+                """DELETE FROM "views_geometry_columns" WHERE "view_name" = lower(?);""",
+                (s_gv_name,),
+            )
+            self.execute(f"""DROP VIEW IF EXISTS "{s_gv_name}";""")
         self.execute(
             f"""
             CREATE VIEW "{s_gv_name}" AS
@@ -854,14 +885,13 @@ class SpatiaLiteConnection(sqlite3.Connection):
         """
         )
         self.execute(
-            f"""
+            """
             INSERT INTO "views_geometry_columns" (
-              "view_name", "view_geometry", "view_rowid", "f_table_name", "f_geometry_column", "read_only"
-            ) VALUES (
-              '{s_gv_name}', '{gt_ref.gc}', '{pk_uid.lower()}', '{gt_ref.name}', '{gt_ref.gc}', 1
-            )
-            ;
-        """
+              "view_name", "view_geometry", "view_rowid",
+              "f_table_name", "f_geometry_column", "read_only"
+            ) VALUES (lower(?), lower(?), lower(?), lower(?), lower(?), 1);
+            """,
+            (s_gv_name, gt_ref.gc, pk_uid, gt_ref.name, gt_ref.gc),
         )
 
     # refresh geotable
