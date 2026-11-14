@@ -465,9 +465,8 @@ class SpatiaLiteConnection(sqlite3.Connection):
                 s_coldef = ", ".join(
                     [f""""{l_coldef[0]}" {l_coldef[1]}""" for l_coldef in ll_coldef]
                 )
-            sql = f"""CREATE TABLE "{s_tbl}" ( {s_coldef} );"""
-            if flg_temp:
-                sql = sql.replace("create table", "create temp table")
+            s_temp = "TEMP " if flg_temp else ""
+            sql = f"""CREATE {s_temp}TABLE "{s_tbl}" ( {s_coldef} );"""
             self.execute(sql)
 
         # ジオテーブルを生成する場合
