@@ -878,30 +878,26 @@ class SpatiaLiteConnection(sqlite3.Connection):
 
     # cast to multi geometry
     def cast_to_multi(self, gt_or_tbl, s_gc_src=None, s_gc_dst=None):
+        """ジオメトリを MULTI 型に変換し、変換後の GTBL を返す。
+
+        s_gc_dst: 変換後のジオメトリ列名。None なら geom_<MULTI の型>_<EPSG>
+        """
         s_tbl, s_gc_src = self.get_tblname_and_gc(gt_or_tbl, s_gc_src)
+        geom_type, i_epsg = self.get_type_and_epsg(s_tbl, s_gc_src)
+        s_abr = self.get_type_abr(geom_type)
+        s_abr_multi = s_abr if s_abr.startswith("m") else "m" + s_abr
 
-        # discard gc
-        self.discard_geomcol(s_tbl, s_gc_src)
+        # 登録を外してから変換し、MULTI 型として登録し直す
+        self.discard_geomcol(GTBL(self, s_tbl, i_epsg, s_abr, s_gc_src))
+        self.execute(f"""UPDATE "{s_tbl}" SET "{s_gc_src}" = ST_Multi("{s_gc_src}");""")
+        gt_multi = GTBL(self, s_tbl, i_epsg, s_abr_multi, s_gc_src)
+        self.recov_geomcol(gt_multi)
 
-        # cast
-        sql = f"""UPDATE "{s_tbl}" SET "{s_gc_src}" = ST_Multi("{s_gc_src}");"""
-        self.execute(sql)
-
-        # recover gc
-        self.recov_geomcol(s_tbl, s_gc_src)
         if s_gc_dst is None:
-            # 既存の名称がジオメトリに合っているかどうかを確認
-            geom_type, epsg = self.get_type_and_epsg(s_tbl, s_gc_src)
-            type_abr = self.get_type_abr(geom_type)
-            s_gc_dst = "geom_{}_{}".format(type_abr, epsg)
-            if s_gc_src != s_gc_dst:
-                gt_dst = self.rename_geomcol(s_tbl, s_gc_src)
-            else:  # 既にキャスト後のジオメトリカラム名に適合しているならばそのままでよい
-                gt_dst = GTBL(self, s_tbl, epsg, type_abr, s_gc_dst)
-        else:
-            gt_dst = self.rename_geomcol(s_tbl, s_gc_src, s_gc_dst)
-
-        return gt_dst
+            s_gc_dst = "geom_{}_{}".format(s_abr_multi, i_epsg)
+        if s_gc_dst.lower() != s_gc_src.lower():
+            return self.rename_geomcol(gt_multi, s_gc_dst=s_gc_dst)
+        return gt_multi
 
     # append src table to dst table
     def append_table(
@@ -1410,18 +1406,38 @@ class SpatiaLiteConnection(sqlite3.Connection):
         if flg_append:
             logger.info(('append table "{}" to "{}"'.format(gt.name, s_tbl_dst)))
 
-            # 読み込んだデータを統合 -> s_tbl_dst
-            self.append_table(gt, s_tbl_dst, flg_multi=flg_multi)
-            self.drop_geotable(gt)
-            gt.name = s_tbl_dst
-            # gt = GTBL(s_tbl_dst, gt.epsg, gt.type_abr)
+            # 追記先のジオメトリ列名を決める。
+            # - 追記先が既にあれば、その列名に合わせる（以前の版で作った表にも追記できる）
+            # - 無ければ s_gc_dst、未指定なら geom_<型>_<EPSG>（flg_multi なら MULTI の型）
+            gt_dst_exist = (
+                self.get_gtbl_from_metadata(s_tbl_dst)
+                if self.ch_exists_table(s_tbl_dst)
+                else None
+            )
+            if gt_dst_exist is not None:
+                s_gc_target = gt_dst_exist.gc
+            elif s_gc_dst is not None:
+                s_gc_target = s_gc_dst
+            else:
+                s_abr = gt.type_abr
+                if flg_multi and not s_abr.startswith("m"):
+                    s_abr = "m" + s_abr
+                s_gc_target = "geom_{}_{}".format(s_abr, gt.epsg)
 
-            if flg_multi and s_gc_dst is None:
-                gt = self.rename_geomcol(
-                    gt
-                )  # todo: 何のためにあるのかイマイチ、、、？　flg_multi必要？
+            # 一時表の側でキャスト・改名してから、名前を揃えて追記する
+            if flg_multi:
+                gt = self.cast_to_multi(gt, s_gc_dst=s_gc_target)
+            elif gt.gc.lower() != s_gc_target.lower():
+                gt = self.rename_geomcol(gt, s_gc_dst=s_gc_target)
+            s_tbl_temp_final = gt.name
+            self.append_table(gt, s_tbl_dst)
+            self.drop_geotable(s_tbl_temp_final)
 
-            # gt = gt_new
+            gt_out = self.get_gtbl_from_metadata(s_tbl_dst)
+            if gt_out is not None:
+                gt = gt_out
+            else:
+                gt.name = s_tbl_dst
 
         elif flg_multi:  # s_geomcol_dstが指定されない場合、gcはジオメトリのタイプに応じて書き換えられる
             gt = self.cast_to_multi(gt, s_gc_dst=s_gc_dst)
