@@ -10,7 +10,7 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [done 2026-11-14] コンストラクタは主接続のパスにファイルが無いと空ファイルを作り、毎回 InitSpatialMetaData を実行する。URI を主接続に渡すと open() で落ちる
 - [done 2026-11-14] GTBL 系のヘルパー（get_gtbl_from_metadata・get_primary_key・ch_exists_table 等）が main しか見ず、ATTACH 先の表を扱えない
 - [done 2026-11-13] zipshps2spatialite が zip と同じディレクトリに一時展開する（読み取り専用の置き場で PermissionError）→ 97b5332 で既定をシステムの一時ディレクトリへ
-- [ ] 2026-11-13 zipshps2spatialite / shp2spatialite の append モードで、ジオメトリ列名が Geometry のまま残る（追記しないモードでは geom_<型>_<EPSG> に改名される）。直すと出力の列名が変わるため、既定を変えるか引数で選べるようにするかを決めてから行う
+- [done 2026-11-14] zipshps2spatialite / shp2spatialite の append モードで、ジオメトリ列名が Geometry のまま残る → 追記しないモードと同じ規則で命名（変更の記録を参照）
 - [ ] 2026-11-14 ch_exists_table・get_tbllist は名前を LIKE で照合するため、表名の _ と % がワイルドカードとして働く（例: gt_a で gtXa にも一致）。完全一致で調べる手段を設ける
 - [ ] 2026-11-13 get_nearest_neighbour は経緯度に平面の ST_Distance を使い、インデックスなしの全組合せになる。KNN 分岐は SpatiaLite 5.1.0 で未検証
 - [ ] 2026-11-13 create_geometry_view は表名に大文字があると失敗する（views_geometry_columns の小文字制約）。overwrite=True は同名オブジェクトを種類を問わず削除する
@@ -48,6 +48,12 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 旧配置（以前の開発場所に残る旧メインリポジトリの写し。4bd68fe で停止し、7251b24 以降の修正を含まない）を sys.path 注入・exec で読んでいる利用側は、各利用側でこのリポジトリの editable 参照へ切り替える（このリポジトリでは行わない）
 
 ## 変更の記録
+
+### 2026-11-14 シェープの追記取り込みのジオメトリ列名・cast_to_multi
+- shp2spatialite（flg_append=True）・zipshps2spatialite: 旧 = 追記先のジオメトリ列名が "geometry"（返す GTBL の gc は "Geometry"）。flg_multi=True では 2 本目の追記で IntegrityError になり取り込めなかった。新 = 追記しない場合と同じ規則で、`s_gc_dst`、未指定なら `geom_<型>_<EPSG>`（flg_multi なら MULTI の型。例 `geom_mpg_4612`）。追記先の表が既にある場合は、その表の列名に合わせる
+  - 利用側の直し方: 取り込んだ表のジオメトリ列を "Geometry"／"geometry" と直接書いている箇所は、返された GTBL の `gt.gc` を使う（または `s_gc_dst` で列名を指定する）。以前の版で作った表に追記し続ける場合は変更不要
+- cast_to_multi: 旧 = 失敗していた（内部で GTBL を作れず AttributeError）。新 = MULTI 型に変換して登録し直し、変換後の GTBL を返す。shp2spatialite（flg_append=False, flg_multi=True）も動くようになった
+  - 利用側の直し方: 不要
 
 ### 2026-11-14 transaction()・ATTACH 先の指定・flg_temp
 - 追加: `SpatiaLiteConnection.transaction()`（`with con.transaction():` で BEGIN、正常終了で COMMIT、例外で ROLLBACK。BEGIN 済みのときは sqlite3.OperationalError）
