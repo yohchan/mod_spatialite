@@ -1972,73 +1972,139 @@ class SpatiaLiteConnection(sqlite3.Connection):
         return l_nesw_dst
 
     # get and update Nearest-Neighbour
+    def get_nearest(
+        self,
+        gt_src: GTBL,
+        gt_dst: GTBL,
+        s_col_id: str,
+        s_col_dist: str | None = None,
+        s_dst_id_col: str | None = None,
+        flg_geodesic: bool | None = None,
+        flg_create_index: bool = True,
+    ) -> int:
+        """gt_src の各行について gt_dst の最近傍を求め、その ID（と距離）を gt_src に書き込む。
+
+        s_col_id: 最近傍の ID を書く gt_src の列（無ければ INTEGER で追加）
+        s_col_dist: 距離を書く gt_src の列（None なら書かない。無ければ REAL で追加）
+        s_dst_id_col: 書き込む gt_dst の ID の列。None なら主キー、無ければ ROWID
+        flg_geodesic: True なら測地線距離（メートル。ST_Distance(a, b, 1)）、False なら
+            CRS の単位の平面距離。None なら gt_dst の SRID が経緯度かで自動で決める
+        flg_create_index: gt_dst に空間インデックスが無ければ作る（False なら ValueError）
+
+        求め方: 仮想表 KNN2 で候補を 1 件得て、その距離 d を上限に、空間インデックスで
+        「d 以内に入りうる範囲」の gt_dst をすべて取り出して正確な距離で最小を選ぶ
+        （KNN2 は探索範囲によって真の最近傍を取りこぼすことがあるため）。
+        ジオメトリが NULL の行と、gt_dst が空のときは NULL を書く。書き込んだ行数を返す。
+        """
+        import math
+
+        i_geo = self.execute("SELECT SridIsGeographic(?);", (gt_dst.epsg,)).fetchone()[
+            0
+        ]
+        b_geographic = bool(i_geo)
+        if flg_geodesic is None:
+            flg_geodesic = b_geographic
+        s_dist = (
+            'ST_Distance(?, d."{gc}", 1)'
+            if flg_geodesic
+            else 'ST_Distance(?, d."{gc}")'
+        )
+        s_dist = s_dist.format(gc=gt_dst.gc)
+
+        if s_dst_id_col is None:
+            s_dst_id_col = self.get_primary_key(gt_dst) or "ROWID"
+
+        b_index = self.execute(
+            """SELECT spatial_index_enabled FROM geometry_columns
+            WHERE lower(f_table_name) = lower(?) AND lower(f_geometry_column) = lower(?);""",
+            (gt_dst.name, gt_dst.gc),
+        ).fetchone()
+        if not (b_index and b_index[0]):
+            if not flg_create_index:
+                raise ValueError(f'get_nearest: "{gt_dst.name}" has no spatial index.')
+            self.add_spindex(gt_dst)
+
+        self.add_column(gt_src.name, s_col_id, "INTEGER")
+        if s_col_dist is not None:
+            self.add_column(gt_src.name, s_col_dist, "REAL")
+
+        # KNN2 の初期の探索半径（CRS の単位。経緯度なら度）。expand=1 で見つかるまで広げる
+        f_radius0 = 0.05 if b_geographic else 5000.0
+        sql_knn = """SELECT fid FROM KNN2 WHERE f_table_name = ? AND f_geometry_column = ?
+            AND ref_geometry = ? AND radius = ? AND expand = 1 AND max_items = 1;"""
+        sql_cand = f"""SELECT d."{s_dst_id_col}", {s_dist} AS dd FROM "{gt_dst.name}" AS d
+            WHERE d.ROWID = ?;"""
+        sql_exact = f"""SELECT d."{s_dst_id_col}", {s_dist} AS dd FROM "{gt_dst.name}" AS d
+            WHERE d.ROWID IN (
+                SELECT ROWID FROM SpatialIndex WHERE f_table_name = ?
+                AND f_geometry_column = ? AND search_frame = BuildMbr(?, ?, ?, ?)
+            )
+            ORDER BY dd LIMIT 1;"""
+
+        l_src = self.execute(
+            f"""SELECT ROWID, "{gt_src.gc}", MbrMinX("{gt_src.gc}"), MbrMinY("{gt_src.gc}"),
+            MbrMaxX("{gt_src.gc}"), MbrMaxY("{gt_src.gc}") FROM "{gt_src.name}";"""
+        ).fetchall()
+        l_updates: list[tuple] = []
+        for i_rowid, b_geom, f_x0, f_y0, f_x1, f_y1 in l_src:
+            if b_geom is None:
+                l_updates.append((None, None, i_rowid))
+                continue
+            r_knn = self.execute(
+                sql_knn, (gt_dst.name, gt_dst.gc, b_geom, f_radius0)
+            ).fetchone()
+            if r_knn is None:
+                l_updates.append((None, None, i_rowid))
+                continue
+            _, f_d = self.execute(sql_cand, (b_geom, r_knn[0])).fetchone()
+
+            # 距離 f_d 以内に入りうる範囲（外接矩形）を少し広めに取る
+            if flg_geodesic:
+                f_dlat = f_d / 110_000.0 * 1.01 + 1e-9
+                f_lat_far = min(89.9, max(abs(f_y0), abs(f_y1)) + f_dlat)
+                f_dlon = (
+                    f_d / (110_000.0 * math.cos(math.radians(f_lat_far))) * 1.01 + 1e-9
+                )
+            else:
+                f_dlat = f_dlon = f_d * 1.000001 + 1e-9
+            r_best = self.execute(
+                sql_exact,
+                (
+                    b_geom,
+                    gt_dst.name,
+                    gt_dst.gc,
+                    f_x0 - f_dlon,
+                    f_y0 - f_dlat,
+                    f_x1 + f_dlon,
+                    f_y1 + f_dlat,
+                ),
+            ).fetchone()
+            l_updates.append((r_best[0], r_best[1], i_rowid))
+
+        s_set = f'"{s_col_id}" = ?' + (f', "{s_col_dist}" = ?' if s_col_dist else "")
+        with self.transaction():
+            for i_id, f_dd, i_rowid in l_updates:
+                t_params = (i_id, f_dd, i_rowid) if s_col_dist else (i_id, i_rowid)
+                self.execute(
+                    f"""UPDATE "{gt_src.name}" SET {s_set} WHERE ROWID = ?;""", t_params
+                )
+        return len(l_updates)
+
     def get_nearest_neighbour(
         self, gt_src_pt, gt_dst_pt, s_col_update, use_virtual_knn=False
     ):
+        """互換用: get_nearest で gt_dst_pt の ROWID を s_col_update に書く。
+
+        2026-11-14 から get_nearest を使う。経緯度の SRID では測地線距離で比べるため、
+        以前（度のまま平面距離で比べていた）と結果が変わる行がありうる。以前と同じ結果が
+        要る場合は get_nearest(gt_src, gt_dst, s_col, s_dst_id_col="ROWID", flg_geodesic=False)。
+        use_virtual_knn は無視する（SpatiaLite 5 には仮想表 KNN が無く、常に失敗していた）。
+        """
         if use_virtual_knn:
-            # KNN使用モード ：KNNはPythonからのループでは落ちる（原因不明）ので、ひとまず利用しない。
-            logger.info("get and update nearest neighbor using Virtual KNN")
-            rows = self.execute(
-                f"""
-                SELECT "ROWID"
-                FROM "{gt_src_pt.name}"
-                WHERE "{gt_src_pt.gc}" IS NOT NULL
-            ;"""
+            logger.warning(
+                "get_nearest_neighbour: use_virtual_knn is ignored (uses KNN2 via get_nearest)."
             )
-            self.begin()
-
-            for row in rows:  # sqlite3ではwithが使えないのでforで対応
-                i_id_src = row[0]
-                # print('knn process: {}'.format(i_id_src))
-                sql = f"""
-                        SELECT "fid" FROM "KNN"
-                        WHERE "f_table_name" = '{gt_dst_pt.name}'
-                        AND "ref_geometry" = (
-                            SELECT "{gt_src_pt.gc}"
-                            FROM "{gt_src_pt.name}"
-                            WHERE "ROWID" == {i_id_src})
-                        AND "max_items" = 1
-                        ;
-                    """
-                id_closest_road = self.execute(sql).fetchone()[0]
-                self.execute(
-                    f"""
-                        UPDATE "{gt_src_pt.name}"
-                        SET "{s_col_update}" = {id_closest_road}
-                        WHERE "ROWID" == {i_id_src}
-                    ;"""
-                )
-            self.commit()
-
-        else:
-            # KNNを使用しない場合、Min(ST_Distance)で対応する
-            logger.info("get and update nearest neighbor without using Virtual KNN")
-            s_tbl_temp = self.get_temptblname("temp")
-            sql = f"""
-                DROP TABLE IF EXISTS "{s_tbl_temp}";
-                CREATE TABLE "{s_tbl_temp}" ("src_id" INTEGER PRIMARY KEY, "dst_id" INTEGER);
-                INSERT INTO "{s_tbl_temp}"
-                SELECT srcid, dstid FROM (
-                    SELECT
-                      src."ROWID" AS srcid
-                      , dst."ROWID" AS dstid
-                      , Min(ST_Distance(src."{gt_src_pt.gc}", dst."{gt_dst_pt.gc}"))
-                    FROM "{gt_src_pt.name}" AS src, "{gt_dst_pt.name}" AS dst
-                    WHERE src."{gt_src_pt.gc}" IS NOT NULL
-                    GROUP BY src."ROWID"
-                )
-                ;
-                UPDATE "{gt_src_pt.name}"
-                SET "{s_col_update}" = (
-                    SELECT "dst_id"
-                    FROM "{s_tbl_temp}"
-                    WHERE "{gt_src_pt.name}"."ROWID" == "{s_tbl_temp}"."src_id"
-                )
-                WHERE "{gt_src_pt.gc}" IS NOT NULL
-                ;
-                DROP TABLE IF EXISTS "{s_tbl_temp}";
-            """
-            self.executescript(sql)
+        self.get_nearest(gt_src_pt, gt_dst_pt, s_col_update, s_dst_id_col="ROWID")
 
     # create routing nodes id
     def routing_addcol_routing_id(
