@@ -99,6 +99,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
         sqlite3.Connection.__init__(self, *args, **kwargs)  # 継承
         self.p_mod_spatialite = p_mod_spatialite
         self.i_page_size = i_page_size
+        self.b_uri = bool(
+            kwargs.get("uri", False)
+        )  # URI を解釈する接続か（attach_db で使う）
         s_ver = self.initialize()
 
         logger.info("Successfully connected to SQLite DB with mod_spatialite.")
@@ -253,22 +256,42 @@ class SpatiaLiteConnection(sqlite3.Connection):
         self.execute("""vacuum;""")
 
     # attach
-    def attach_db(self, p_db, s_alias="a"):
-        import os
+    def attach_db(self, p_db, s_alias="a", flg_readonly=False):
+        """DB を別名 s_alias で ATTACH する。
 
-        if not os.path.isfile(p_db):
-            logger.warning(("oops... db file: {} is not exist.".format(p_db)))
-            return
+        p_db: ファイルのパス、または URI（"file:...?mode=ro" 等。uri=True で開いた接続のみ）
+        flg_readonly: True ならパスから読み取り専用の URI を作って ATTACH する
+            （uri=True で開いた接続のみ。例: SpatiaLiteConnection(p, uri=True)）
 
-        sql = """attach database '{}' as {};""".format(os.path.abspath(p_db), s_alias)
-        # print(sql)
-        self.execute(sql)
-        logger.info(
-            (
-                "attached database: {} into: {}".format(
-                    os.path.split(p_db)[1], os.path.split(self.get_dbpath())[1]
-                )
+        パスで指定してファイルが無い場合は、従来どおり WARNING を出して何もしない。
+        URI を解釈しない接続に URI・flg_readonly を渡すと ValueError（SQLite は URI を
+        ファイル名として扱い、別のファイルを作ってしまうため）。
+        """
+        from urllib.parse import quote
+
+        s_db = str(p_db)
+        b_is_uri = s_db.startswith("file:")
+        if (b_is_uri or flg_readonly) and not getattr(self, "b_uri", False):
+            raise ValueError(
+                "attach_db: URI / flg_readonly=True requires a connection opened with"
+                " uri=True (e.g. SpatiaLiteConnection(p_db, uri=True))."
             )
+
+        if b_is_uri:
+            s_target = s_db
+        else:
+            if not os.path.isfile(s_db):
+                logger.warning(("oops... db file: {} is not exist.".format(s_db)))
+                return
+            s_abs = os.path.abspath(s_db)
+            s_target = f"file:{quote(s_abs)}?mode=ro" if flg_readonly else s_abs
+
+        self.execute(f"""ATTACH DATABASE ? AS "{s_alias}";""", (s_target,))
+        logger.info(
+            "attached database: %s as %s into: %s",
+            s_target,
+            s_alias,
+            os.path.split(self.get_dbpath())[1],
         )
 
     # detach
