@@ -117,3 +117,38 @@ def test_planar_on_geographic_matches_old_behavior() -> None:
     for i_src, i_nn in con.execute('SELECT "PK_UID", nn_id FROM gt_s3'):
         assert i_nn == d_exp[i_src][0]
     con.close()
+
+
+@pytest.mark.parametrize("f_lat", [43.0, 45.0, 70.0])
+def test_longitude_shrinks_with_latitude(f_lat: float) -> None:
+    """経度方向に離れた候補が、緯度方向の候補より測地線で近い場合でも取りこぼさない。
+
+    緯度方向の候補（度の差は小さい）を KNN2 が先に見つけても、経度方向の 1 度が緯度に
+    よって縮む分だけ探索範囲を広げているため、経度方向の真の最近傍を選べること。
+    """
+    import math
+
+    con = SpatiaLiteConnection(":memory:")
+    f_dlat = 0.5
+    # 経度方向の候補を、緯度方向の候補より測地線で約 1% 近くなる位置に置く
+    f_dlon = f_dlat * 0.99 / math.cos(math.radians(f_lat))
+    gt_dst = _make(
+        con,
+        "gt_dl",
+        4612,
+        "POINT",
+        [
+            ("north", f"POINT(141.0 {f_lat + f_dlat})"),
+            ("east", f"POINT({141.0 + f_dlon} {f_lat})"),
+        ],
+    )
+    gt_src = _make(con, "gt_sl", 4612, "POINT", [("s", f"POINT(141.0 {f_lat})")])
+    con.get_nearest(gt_src, gt_dst, "nn_id", "nn_dist")
+    d_exp = _brute(con, gt_src, gt_dst, True)
+    i_nn, f_dist = con.execute("SELECT nn_id, nn_dist FROM gt_sl").fetchone()
+    assert (i_nn, f_dist) == (d_exp[1][0], pytest.approx(d_exp[1][1]))
+    assert (
+        con.execute("SELECT name FROM gt_dl WHERE PK_UID = ?", (i_nn,)).fetchone()[0]
+        == "east"
+    )
+    con.close()

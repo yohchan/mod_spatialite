@@ -1995,6 +1995,8 @@ class SpatiaLiteConnection(sqlite3.Connection):
         「d 以内に入りうる範囲」の gt_dst をすべて取り出して正確な距離で最小を選ぶ
         （KNN2 は探索範囲によって真の最近傍を取りこぼすことがあるため）。
         ジオメトリが NULL の行と、gt_dst が空のときは NULL を書く。書き込んだ行数を返す。
+        制約: 経緯度で日付変更線（経度 ±180 度）をまたぐ範囲は扱わない（範囲の絞り込みが
+        経度の折り返しを考慮しないため）。極の近く（緯度 89.9 度超）は範囲を広めに取る。
         """
         import math
 
@@ -2056,7 +2058,8 @@ class SpatiaLiteConnection(sqlite3.Connection):
             if r_knn is None:
                 l_updates.append((None, None, i_rowid))
                 continue
-            _, f_d = self.execute(sql_cand, (b_geom, r_knn[0])).fetchone()
+            r_cand = self.execute(sql_cand, (b_geom, r_knn[0])).fetchone()
+            f_d = r_cand[1]
 
             # 距離 f_d 以内に入りうる範囲（外接矩形）を少し広めに取る
             if flg_geodesic:
@@ -2079,6 +2082,8 @@ class SpatiaLiteConnection(sqlite3.Connection):
                     f_y1 + f_dlat,
                 ),
             ).fetchone()
+            if r_best is None:  # 候補自身は必ず範囲内のため通常は起きない（念のため）
+                r_best = r_cand
             l_updates.append((r_best[0], r_best[1], i_rowid))
 
         s_set = f'"{s_col_id}" = ?' + (f', "{s_col_dist}" = ?' if s_col_dist else "")
