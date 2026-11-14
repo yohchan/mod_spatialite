@@ -52,8 +52,8 @@ API や挙動を変えたときは、OPEN_ITEMS.md の「変更の記録」に�
 
 ### 接続
 
-- 接続は自動コミット（`isolation_level=None`）。大量の行を書き込むときは `con.execute("BEGIN")` … `con.commit()`（失敗時は `con.rollback()`）で明示的に囲む。自動コミットの接続では `with con:` は BEGIN しないため速くならない。
-- 読み取り専用で開く: `SpatiaLiteConnection("file:a.sqlite?mode=ro", uri=True)`。新しい DB のページサイズ: `SpatiaLiteConnection("a.sqlite", i_page_size=65536)`。
+- 接続は自動コミット（`isolation_level=None`）。大量の行を書き込むときは `with con.transaction():` で囲む（BEGIN、正常終了で COMMIT、例外で ROLLBACK）。自動コミットの接続では `with con:` は BEGIN しないため速くならない。
+- 読み取り専用で開く: `SpatiaLiteConnection("file:a.sqlite?mode=ro", uri=True)`。読み取り専用で ATTACH する: `uri=True` で開いた接続で `con.attach_db("b.sqlite", "b", flg_readonly=True)`。ATTACH 先の表は `get_tbllist`・`ch_exists_table`・`get_gtbl_from_metadata` 等に `s_schema="b"` を渡して扱う。新しい DB のページサイズ: `SpatiaLiteConnection("a.sqlite", i_page_size=65536)`。
 - メッセージは logging（ロガー `mod_spatialite`）で出る。経過を見るには `logging.basicConfig(level=logging.INFO)`。
 
 ```python

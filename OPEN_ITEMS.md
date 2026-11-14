@@ -6,14 +6,15 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 ## 未完了
 
 ### 既知の問題点（2026-11-13、利用側からの照会の検証で判明）
-- [ ] 2026-11-13 attach_db() が URI（`file:...?mode=ro`）を受け付けない（生 SQL の ATTACH は uri=True 接続なら可）
+- [done 2026-11-14] attach_db() が URI（`file:...?mode=ro`）を受け付けない（生 SQL の ATTACH は uri=True 接続なら可）
 - [done 2026-11-14] コンストラクタは主接続のパスにファイルが無いと空ファイルを作り、毎回 InitSpatialMetaData を実行する。URI を主接続に渡すと open() で落ちる
-- [ ] 2026-11-13 GTBL 系のヘルパー（get_gtbl_from_metadata・get_primary_key・ch_exists_table 等）が main しか見ず、ATTACH 先の表を扱えない
+- [done 2026-11-14] GTBL 系のヘルパー（get_gtbl_from_metadata・get_primary_key・ch_exists_table 等）が main しか見ず、ATTACH 先の表を扱えない
 - [done 2026-11-13] zipshps2spatialite が zip と同じディレクトリに一時展開する（読み取り専用の置き場で PermissionError）→ 97b5332 で既定をシステムの一時ディレクトリへ
-- [ ] 2026-11-13 zipshps2spatialite / shp2spatialite の append モードで、ジオメトリ列名が Geometry のまま残る
+- [ ] 2026-11-13 zipshps2spatialite / shp2spatialite の append モードで、ジオメトリ列名が Geometry のまま残る（追記しないモードでは geom_<型>_<EPSG> に改名される）。直すと出力の列名が変わるため、既定を変えるか引数で選べるようにするかを決めてから行う
+- [ ] 2026-11-14 ch_exists_table・get_tbllist は名前を LIKE で照合するため、表名の _ と % がワイルドカードとして働く（例: gt_a で gtXa にも一致）。完全一致で調べる手段を設ける
 - [ ] 2026-11-13 get_nearest_neighbour は経緯度に平面の ST_Distance を使い、インデックスなしの全組合せになる。KNN 分岐は SpatiaLite 5.1.0 で未検証
 - [ ] 2026-11-13 create_geometry_view は表名に大文字があると失敗する（views_geometry_columns の小文字制約）。overwrite=True は同名オブジェクトを種類を問わず削除する
-- [ ] 2026-11-13 create_table の flg_temp が効かない（小文字の "create table" を置換しているが、列定義ありのときの SQL は大文字）
+- [done 2026-11-14] create_table の flg_temp が効かない（小文字の "create table" を置換しているが、列定義ありのときの SQL は大文字）
 - [done 2026-11-14] disconnect() が既定で VACUUM と upgrade_db を実行する（大きい DB では重い）
 - [done 2026-11-14] import 時・接続時の print と、SPATIALITE_SECURITY 環境変数の設定（import・接続時の副作用）
 - [ ] 2026-11-13 Windows 用の DLL フォルダの既定値が、旧開発環境の絶対パスのまま win32 分岐にハードコードされている（src/mod_spatialite/_core.py の initialize）
@@ -27,7 +28,7 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 zipshps2spatialite のポリゴン取り込みが遅い（数十万行規模のポリゴンで、dbf の属性だけを取り込む場合の約 3 倍の時間がかかる）。1 本ずつ一時表に ImportSHP してから CloneTable で追記する方式が原因と見ている。優先度低
 
 ### 設計の見直し
-- [ ] 2026-11-14 トランザクションを扱うコンテキストマネージャ（例: `with con.transaction():` で BEGIN し、正常終了で COMMIT、例外で ROLLBACK）を加えるか。接続は自動コミットのため 1 文ごとにコミットされ、大量の書き込みが遅い（数万行で数秒が十数分になる環境がある）。既存の begin() は BEGIN を出すだけで ROLLBACK しない。採否は未定
+- [done 2026-11-14] トランザクションを扱うコンテキストマネージャ（例: `with con.transaction():` で BEGIN し、正常終了で COMMIT、例外で ROLLBACK）を加えるか。接続は自動コミットのため 1 文ごとにコミットされ、大量の書き込みが遅い（数万行で数秒が十数分になる環境がある）。既存の begin() は BEGIN を出すだけで ROLLBACK しない。採否は未定
 - [ ] 2026-11-14 print から置き換えた logging のメッセージの文面（英語・日本語の混在、誤字）の整理
 - [ ] 2026-11-13 マルチプラットフォーム（Linux/WSL・Windows）で配布できる形にする。SpatiaLite の DLL 群・proj.db は SpatiaLite 側の配布物のため、このリポジトリには含めず再配布もしない（利用者が別途入手する）。現行の「モジュールと同じ場所に置いた DLL・proj.db を PATH に足す」方式を、利用者が入手した SpatiaLite の場所を指定・検出できる方式に改める
 - [ ] 2026-11-13 smoke_test_windows.py（未追跡。Windows/OSGeo4W 用の動作確認）を、上記の方式に合わせて tests/ に取り込む（Windows のときだけ実行）
@@ -47,6 +48,18 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 旧配置（以前の開発場所に残る旧メインリポジトリの写し。4bd68fe で停止し、7251b24 以降の修正を含まない）を sys.path 注入・exec で読んでいる利用側は、各利用側でこのリポジトリの editable 参照へ切り替える（このリポジトリでは行わない）
 
 ## 変更の記録
+
+### 2026-11-14 transaction()・ATTACH 先の指定・flg_temp
+- 追加: `SpatiaLiteConnection.transaction()`（`with con.transaction():` で BEGIN、正常終了で COMMIT、例外で ROLLBACK。BEGIN 済みのときは sqlite3.OperationalError）
+  - 利用側の直し方: 不要（大量の書き込みをこれで囲むと速くなる）
+- attach_db: 追加 = 引数 `flg_readonly`（パスから読み取り専用の URI を作って ATTACH）、URI 文字列（"file:...?mode=ro" 等）の受け付け。どちらも uri=True で開いた接続のときだけ有効で、URI を解釈しない接続に渡すと ValueError。パスで指定した場合の挙動は従来どおり
+  - 利用側の直し方: 不要（読み取り専用で ATTACH したい場合は、接続を `SpatiaLiteConnection(p, uri=True)` で開き `attach_db(p_other, "o", flg_readonly=True)`）
+- ATTACH 先の指定: 追加 = 引数 `s_schema`（get_tbllist・ch_exists_table・get_columnsdef・ch_exists_col・get_gtbl_from_metadata・get_primary_key）と `flg_include_views`（get_tbllist・ch_exists_table）。既定値では従来どおり
+  - 利用側の直し方: 不要
+- get_gtbl_from_metadata: 旧 = 表名・列名を大小区別して照合（大文字を含む名前では見つからない）。新 = 大小を区別せずに照合
+  - 利用側の直し方: 不要
+- create_table(flg_temp=True): 旧 = 列定義を渡すと永続表として作られていた（不具合）。新 = 列定義の有無にかかわらず一時表（接続を閉じると消える）
+  - 利用側の直し方: flg_temp=True で作った表を永続表として使っていた場合は、flg_temp を外す
 
 ### 2026-11-14 段階 3: 副作用と接続の作法（挙動の変更あり）
 - 出力: 旧 = import 時・接続時・各メソッドで print。新 = logging（ロガーは `mod_spatialite` 配下）。経過・成功は INFO（既定では表示されない）、引数の誤り・処理を飛ばして戻る分岐・エラーは WARNING（既定で stderr に出る）。import 時は何も出さない
