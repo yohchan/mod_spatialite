@@ -354,15 +354,21 @@ class SpatiaLiteConnection(sqlite3.Connection):
         logger.info("check OK. routing available.")
 
     # check table exists or not
-    def ch_exists_table(self, s_tbl):
-        result = self.get_tbllist(s_tbl)
+    def ch_exists_table(self, s_tbl, s_schema=None, flg_include_views=False):
+        """表があるかを返す（s_schema・flg_include_views は get_tbllist と同じ）。
+
+        注意: 名前は LIKE で照合するため、_ と % はワイルドカードとして働く。
+        """
+        result = self.get_tbllist(
+            s_tbl, s_schema=s_schema, flg_include_views=flg_include_views
+        )
         if len(result) == 0:
             return False
         else:
             return True
 
     # check table exists or not
-    def ch_exists_col(self, gt_or_tbl, s_col=None):
+    def ch_exists_col(self, gt_or_tbl, s_col=None, s_schema=None):
         if isinstance(gt_or_tbl, GTBL):
             s_tbl = gt_or_tbl.name
             s_col = gt_or_tbl.gc
@@ -371,7 +377,10 @@ class SpatiaLiteConnection(sqlite3.Connection):
             if s_col is None:
                 logger.warning("if gt_or_tbl is not GTBL, s_col is mandatory.")
 
-        result = [d_colsinfo["name"] for d_colsinfo in self.get_columnsdef(s_tbl)]
+        result = [
+            d_colsinfo["name"]
+            for d_colsinfo in self.get_columnsdef(s_tbl, s_schema=s_schema)
+        ]
 
         if s_col in result:
             return True
@@ -961,20 +970,31 @@ class SpatiaLiteConnection(sqlite3.Connection):
         self.upgrade_db()
 
     # get table list (return in utf)
-    def get_tbllist(self, s_likephrase=None):  # 名称条件はLikeなので％利用可能
-        if s_likephrase is None:
-            sql = """SELECT "name" FROM "SQLITE_MASTER" WHERE "type" IS 'table';"""
-        else:
-            sql = """
-                select "name" from "SQLITE_MASTER" where "type" is 'table' and "name" like '{}';
-            """.format(s_likephrase)
-        rows = self.execute(sql)
+    def get_tbllist(
+        self, s_likephrase=None, s_schema=None, flg_include_views=False
+    ):  # 名称条件はLikeなので％利用可能
+        """表の名前の一覧（名前順）を返す。
+
+        s_likephrase: LIKE の条件（% と _ がワイルドカード）。None なら全件
+        s_schema: 見るスキーマ（"main"・ATTACH の別名等）。None なら従来どおり main
+        flg_include_views: True ならビューも含める
+        """
+        s_master = (
+            "SQLITE_MASTER" if s_schema is None else f'"{s_schema}".sqlite_master'
+        )
+        s_types = "('table', 'view')" if flg_include_views else "('table')"
+        sql = f"""SELECT "name" FROM {s_master} WHERE "type" IN {s_types}"""
+        t_params: tuple = ()
+        if s_likephrase is not None:
+            sql += """ AND "name" LIKE ?"""
+            t_params = (s_likephrase,)
+        rows = self.execute(sql + ";", t_params)
         l_tbl = sorted([i["name"] for i in rows])
 
         return l_tbl
 
     # テーブルの列情報を得る。戻り値は各カラムの辞書（name, type, notnull, dflt_value, pk）のリスト
-    def get_columnsdef(self, gt_or_tbl, flg_except_gc=False) -> dict:
+    def get_columnsdef(self, gt_or_tbl, flg_except_gc=False, s_schema=None) -> dict:
         """
         This function returns the column information of the table.
         return :dict of columns info [name, type, notnull, default_value, pk]
@@ -986,7 +1006,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
             logger.warning("when tblname is given then flg_except_gc must be set False")
             return 0  # 処理終了
 
-        sql = """pragma table_info("{}");""".format(s_tbl)
+        # s_schema が None なら従来どおり（temp → main → ATTACH 先の順に探す）
+        s_prefix = "" if s_schema is None else f'"{s_schema}".'
+        sql = f"""pragma {s_prefix}table_info("{s_tbl}");"""
         ld_coldef = self.execute(sql).fetchall()
 
         if flg_except_gc:
@@ -2269,14 +2291,24 @@ class SpatiaLiteConnection(sqlite3.Connection):
         return d_closest_point
 
     # 登録されているジオメトリカラムの情報をもとに、テーブル名からgtblを得る
-    def get_gtbl_from_metadata(self, s_tbl, s_gc=None):
-        if s_gc is None:
-            sql = f"""SELECT * FROM "geometry_columns" WHERE "f_table_name" IS '{s_tbl}';"""
-        else:
-            sql = f"""
-                SELECT * FROM "geometry_columns" WHERE "f_table_name" IS '{s_tbl}' AND "f_geometry_column" IS '{s_gc}';
-            """
-        ll_fetch = self.execute(sql).fetchall()
+    def get_gtbl_from_metadata(self, s_tbl, s_gc=None, s_schema=None):
+        """geometry_columns から GTBL を作って返す（見つからない・複数なら None）。
+
+        s_schema: 読む geometry_columns のスキーマ（ATTACH の別名等）。None なら従来どおり
+            （修飾なし。通常は main）。返す GTBL の name はスキーマを含まない表名。
+        """
+        s_meta = (
+            '"geometry_columns"'
+            if s_schema is None
+            else f'"{s_schema}"."geometry_columns"'
+        )
+        # geometry_columns の表名・列名は小文字で登録されるため、大小を区別せずに照合する
+        sql = f"""SELECT * FROM {s_meta} WHERE lower("f_table_name") = lower(?)"""
+        t_params: tuple = (s_tbl,)
+        if s_gc is not None:
+            sql += """ AND lower("f_geometry_column") = lower(?)"""
+            t_params += (s_gc,)
+        ll_fetch = self.execute(sql + ";", t_params).fetchall()
         d_type = {
             1: "pt",
             2: "ln",
@@ -2489,7 +2521,9 @@ class SpatiaLiteConnection(sqlite3.Connection):
             return dtype
 
     # get primary key column name
-    def get_primary_key(self, gt_or_tbl: [GTBL, str]) -> [str, None]:
+    def get_primary_key(
+        self, gt_or_tbl: GTBL | str, s_schema: str | None = None
+    ) -> str | None:
         """
         get name of primary key column
         :param gt_or_tbl: table name or GTBL object
@@ -2497,9 +2531,8 @@ class SpatiaLiteConnection(sqlite3.Connection):
         """
 
         s_tbl = gt_or_tbl.name if isinstance(gt_or_tbl, GTBL) else gt_or_tbl
-        rows = self.execute(
-            f"""PRAGMA table_info("{s_tbl}")"""
-        ).fetchall()  # by ChatGTP
+        s_prefix = "" if s_schema is None else f'"{s_schema}".'
+        rows = self.execute(f"""PRAGMA {s_prefix}table_info("{s_tbl}")""").fetchall()
         for row in rows:
             if row[5] == 1:
                 return row[1]
