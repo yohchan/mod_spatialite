@@ -12,14 +12,14 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [done 2026-11-13] zipshps2spatialite が zip と同じディレクトリに一時展開する（読み取り専用の置き場で PermissionError）→ 97b5332 で既定をシステムの一時ディレクトリへ
 - [done 2026-11-14] zipshps2spatialite / shp2spatialite の append モードで、ジオメトリ列名が Geometry のまま残る → 追記しないモードと同じ規則で命名（変更の記録を参照）
 - [done 2026-11-14] ch_exists_table・get_tbllist は名前を LIKE で照合するため、表名の _ と % がワイルドカードとして働く → ch_exists_table に flg_exact を追加（get_tbllist は LIKE のまま）
-- [ ] 2026-11-13 get_nearest_neighbour は経緯度に平面の ST_Distance を使い、インデックスなしの全組合せになる。KNN 分岐は SpatiaLite 5.1.0 で未検証
+- [done 2026-11-14] get_nearest_neighbour は経緯度に平面の ST_Distance を使い、インデックスなしの全組合せになる。KNN 分岐は SpatiaLite 5.1.0 で未検証 → get_nearest を追加し、get_nearest_neighbour もそれを使う（KNN は 5.x に無く常に失敗していた）
 - [done 2026-11-14] create_geometry_view は表名に大文字があると失敗する（views_geometry_columns の小文字制約）。overwrite=True は同名オブジェクトを種類を問わず削除する → 小文字で登録、削除はビューとその登録行に限定
 - [done 2026-11-14] create_table の flg_temp が効かない（小文字の "create table" を置換しているが、列定義ありのときの SQL は大文字）
 - [done 2026-11-14] disconnect() が既定で VACUUM と upgrade_db を実行する（大きい DB では重い）
 - [done 2026-11-14] import 時・接続時の print と、SPATIALITE_SECURITY 環境変数の設定（import・接続時の副作用）
 - [ ] 2026-11-13 Windows 用の DLL フォルダの既定値が、旧開発環境の絶対パスのまま win32 分岐にハードコードされている（src/mod_spatialite/_core.py の initialize）
 - [ ] 2026-11-13 generate_stdmesh は Python で 1 区画ずつ WKT を作って INSERT する（全国規模には不向き）。get_mesh_index の境界上の精度問題と 1/10・1/20 細分は未実装
-- [ ] 2026-11-13 測地線距離の専用メソッドが無い（ST_Distance(a, b, 1) と MakeLine を生 SQL で書けば足りる）
+- [done 2026-11-14] 測地線距離の専用メソッドが無い → 作らない（`ST_Distance(a, b, 1)` で足りる）。README に記載
 - [done 2026-11-13] 2026-11-13 get_tblname / get_tblname_and_gc は staticmethod なのに、引数が不正なときの分岐で self を参照する（その分岐に入ると NameError。ruff F821）
 - [done 2026-11-14] `.format` に使われない引数がある（ruff F523、clone_table・create_cloned_table）→ 警告文に表名を入れる形に修正（SQL への影響はなかった）
 - [done 2026-11-13] ruff による一括整形（1c90525。.git-blame-ignore-revs に登録、Markdown は対象外）
@@ -28,6 +28,8 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 zipshps2spatialite のポリゴン取り込みが遅い（数十万行規模のポリゴンで、dbf の属性だけを取り込む場合の約 3 倍の時間がかかる）。1 本ずつ一時表に ImportSHP してから CloneTable で追記する方式が原因と見ている。優先度低
 
 ### 設計の見直し
+- [ ] 2026-11-14 k 近傍（近い順に k 件。例 k=3〜5）を別の表（src の ID・dst の ID・順位・距離）に書くメソッド。経緯度では KNN2 の候補の順位が測地線の距離の順と一致しないことがあるため、k より多めの候補を取って測地線で並べ直す。規模の目安は src 数十万 × dst 約千。利用側の要望あり（急ぎではない）
+- [ ] 2026-11-14 get_nearest は src を 1 行ずつ問い合わせる（数十万行では数分の見込み）。規模が大きい場合の高速化
 - [done 2026-11-14] トランザクションを扱うコンテキストマネージャ（例: `with con.transaction():` で BEGIN し、正常終了で COMMIT、例外で ROLLBACK）を加えるか。接続は自動コミットのため 1 文ごとにコミットされ、大量の書き込みが遅い（数万行で数秒が十数分になる環境がある）。既存の begin() は BEGIN を出すだけで ROLLBACK しない。採否は未定
 - [ ] 2026-11-14 print から置き換えた logging のメッセージの文面（英語・日本語の混在、誤字）の整理
 - [ ] 2026-11-13 マルチプラットフォーム（Linux/WSL・Windows）で配布できる形にする。SpatiaLite の DLL 群・proj.db は SpatiaLite 側の配布物のため、このリポジトリには含めず再配布もしない（利用者が別途入手する）。現行の「モジュールと同じ場所に置いた DLL・proj.db を PATH に足す」方式を、利用者が入手した SpatiaLite の場所を指定・検出できる方式に改める
@@ -48,6 +50,11 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 旧配置（以前の開発場所に残る旧メインリポジトリの写し。4bd68fe で停止し、7251b24 以降の修正を含まない）を sys.path 注入・exec で読んでいる利用側は、各利用側でこのリポジトリの editable 参照へ切り替える（このリポジトリでは行わない）
 
 ## 変更の記録
+
+### 2026-11-14 最近傍: get_nearest の追加と get_nearest_neighbour の切り替え
+- 追加: `get_nearest(gt_src, gt_dst, s_col_id, s_col_dist=None, s_dst_id_col=None, flg_geodesic=None, flg_create_index=True)`。gt_src の各行の最近傍の ID（既定は gt_dst の主キー）と距離を書く。経緯度の SRID では測地線のメートル、投影座標では CRS の単位（flg_geodesic で明示も可）。空間インデックスで絞り、総当たりはしない
+- get_nearest_neighbour: 旧 = 全組合せの総当たりで、経緯度でも度のまま平面距離で比べていた。use_virtual_knn=True は常に失敗（SpatiaLite 5 に仮想表 KNN が無い）。新 = get_nearest で gt_dst の ROWID を書く。**経緯度の SRID では測地線距離で比べるため、以前と結果（選ばれる最近傍）が変わる行がありうる**。use_virtual_knn は無視して警告。ジオメトリが NULL の行には NULL を書く（旧は更新しなかった）
+  - 利用側の直し方: 呼び出しは変更不要。経緯度のデータで以前の結果を再計算すると値が変わりうる。以前と同じ結果（度のまま平面距離）が要る場合は `get_nearest(gt_src, gt_dst, s_col, s_dst_id_col="ROWID", flg_geodesic=False)` を使う
 
 ### 2026-11-14 create_geometry_view・ch_exists_table の完全一致
 - create_geometry_view: 旧 = 表名・ビュー名に大文字があると登録に失敗。overwrite=True は同名のオブジェクトを種類を問わず削除（同名の表も消えた）。新 = views_geometry_columns に小文字で登録。overwrite=True で消すのは同名のビューとその登録行だけ（同名の表があればエラーで止まる）
