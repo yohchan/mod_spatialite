@@ -18,7 +18,9 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [done 2026-11-14] disconnect() が既定で VACUUM と upgrade_db を実行する（大きい DB では重い）
 - [done 2026-11-14] import 時・接続時の print と、SPATIALITE_SECURITY 環境変数の設定（import・接続時の副作用）
 - [ ] 2026-11-13 Windows 用の DLL フォルダの既定値が、旧開発環境の絶対パスのまま win32 分岐にハードコードされている（src/mod_spatialite/_core.py の initialize）
-- [ ] 2026-11-13 generate_stdmesh は Python で 1 区画ずつ WKT を作って INSERT する（全国規模には不向き）。get_mesh_index の境界上の精度問題と 1/10・1/20 細分は未実装
+- [done 2026-11-14] generate_stdmesh は Python で 1 区画ずつ WKT を作って INSERT する（全国規模には不向き）。1/10 細分は未実装 → SQL で一括生成、tenth を追加（北海道を覆う矩形の 1/2 メッシュ 134 万区画が約 4 秒）
+- [ ] 2026-11-14 get_mesh_index は境界上の点で浮動小数の誤差により隣のメッシュを返すことがある（例: 経度 140.6 が 1 つ西の 2 倍地域メッシュになる）。generate_stdmesh は許容値を入れた格子番号で回避済み。get_mesh_index 側も直すか（返すコードが変わる点がある）
+- [ ] 2026-11-14 1/20 細分（twentieth）は get_stdmeshcode2wkt・generate_stdmesh とも未対応（定義の確認が要る）。10 桁のコードは quarter と tenth を区別できない
 - [done 2026-11-14] 測地線距離の専用メソッドが無い → 作らない（`ST_Distance(a, b, 1)` で足りる）。README に記載
 - [done 2026-11-13] 2026-11-13 get_tblname / get_tblname_and_gc は staticmethod なのに、引数が不正なときの分岐で self を参照する（その分岐に入ると NameError。ruff F821）
 - [done 2026-11-14] `.format` に使われない引数がある（ruff F523、clone_table・create_cloned_table）→ 警告文に表名を入れる形に修正（SQL への影響はなかった）
@@ -50,6 +52,11 @@ API や挙動を変えた場合の記録（旧→新・利用側での直し方�
 - [ ] 2026-11-13 旧配置（以前の開発場所に残る旧メインリポジトリの写し。4bd68fe で停止し、7251b24 以降の修正を含まない）を sys.path 注入・exec で読んでいる利用側は、各利用側でこのリポジトリの editable 参照へ切り替える（このリポジトリでは行わない）
 
 ## 変更の記録
+
+### 2026-11-14 generate_stdmesh の SQL 化
+- 旧: 1 区画ずつ Python でコード・WKT を作って INSERT。範囲の南西端から 1 区画ずつ進めるため、範囲の幅が区画の整数倍でないと北端・東端を含むメッシュが抜けることがあった。境界上の点は浮動小数の誤差で南西隣のメッシュになることがあった
+- 新: 格子番号から SQL でまとめて作る。範囲（境界を含む）と重なるメッシュをすべて作る（北端・東端がメッシュ境界に一致する場合はその北側・東側も含む）。境界上の点は北東側のメッシュに入る。mesh_level に "tenth"（1/10 細分）を追加。表の形・戻り値は不変
+  - 利用側の直し方: 不要（同じ範囲で作り直すと、北端・東端の行・列が増えることがある）
 
 ### 2026-11-14 最近傍: get_nearest の追加と get_nearest_neighbour の切り替え
 - 追加: `get_nearest(gt_src, gt_dst, s_col_id, s_col_dist=None, s_dst_id_col=None, flg_geodesic=None, flg_create_index=True)`。gt_src の各行の最近傍の ID（既定は gt_dst の主キー）と距離を書く。経緯度の SRID では測地線のメートル、投影座標では CRS の単位（flg_geodesic で明示も可）。空間インデックスで絞り、総当たりはしない
