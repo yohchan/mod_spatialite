@@ -503,3 +503,82 @@ def get_meshcode_sql_point(s_code_expr: str, mesh_level: int | str, i_epsg: int)
         f"MakePoint(({s_lon_min} + {s_lon_max}) / 2.0, "
         f"({s_lat_min} + {s_lat_max}) / 2.0, {int(i_epsg)})"
     )
+
+
+# 格子番号からメッシュコードを作る SQL 式（generate_stdmesh 用）
+# 1次メッシュ（緯度 2/3 度×経度 1 度）をレベルごとの分割数 div で等分した格子の番号
+#   ilat = floor(緯度 × 1.5 × div)、ilon = floor((経度 − 100) × div)
+# から、get_mesh_index と同じ規則でメッシュコード（整数）を作る。
+D_MESH_GRID_DIV: dict[int | str, int] = {
+    1: 1,
+    2: 8,
+    "5x": 16,
+    "2x": 40,
+    3: 80,
+    "half": 160,
+    "quarter": 320,
+    "eighth": 640,
+    "tenth": 800,
+}
+
+
+def get_mesh_grid_index(f_deg: float, i_div: int, f_offset: float = 0.0) -> int:
+    """経度（f_offset=100）または緯度×1.5（f_offset=0）の値から格子番号を返す。
+
+    境界上の値で浮動小数の誤差により 1 つ下の格子にならないよう、小さな許容値を足す。
+    """
+    import math
+
+    return math.floor((f_deg - f_offset) * i_div + 1e-9)
+
+
+def get_meshcode_sql_from_grid(
+    mesh_level: int | str, s_ilat: str = "ilat", s_ilon: str = "ilon"
+) -> str:
+    """格子番号の列（または式）からメッシュコード（INTEGER）を作る SQL 式を返す。"""
+    if mesh_level not in D_MESH_GRID_DIV:
+        raise ValueError(
+            f"mesh_level must be one of {list(D_MESH_GRID_DIV)}: {mesh_level!r}"
+        )
+    i_div = D_MESH_GRID_DIV[mesh_level]
+    y, x = f"({s_ilat})", f"({s_ilon})"
+    s_code = f"(({y} / {i_div}) * 100 + ({x} / {i_div}))"  # 1次（4桁）
+    if mesh_level == 1:
+        return s_code
+
+    i_s2 = i_div // 8  # 2次メッシュ 1 区画あたりの格子数
+    ry, rx = f"({y} % {i_div})", f"({x} % {i_div})"
+    s_code = f"({s_code} * 100 + ({ry} / {i_s2}) * 10 + ({rx} / {i_s2}))"  # 2次（6桁）
+    if mesh_level == 2:
+        return s_code
+    ry2, rx2 = f"({ry} % {i_s2})", f"({rx} % {i_s2})"
+    if (
+        mesh_level == "5x"
+    ):  # 5倍地域メッシュ: 2次を 2×2 に分け 1=南西 2=南東 3=北西 4=北東
+        return (
+            f"({s_code} * 10 + ({rx2} / {i_s2 // 2}) + ({ry2} / {i_s2 // 2}) * 2 + 1)"
+        )
+    if mesh_level == "2x":  # 2倍地域メッシュ: 2次を 5×5 に分け、緯度・経度の偶数番号＋5
+        return f"({s_code} * 1000 + ({ry2} * 2) * 100 + ({rx2} * 2) * 10 + 5)"
+
+    i_s3 = i_s2 // 10  # 3次メッシュ 1 区画あたりの格子数
+    s_code = (
+        f"({s_code} * 100 + ({ry2} / {i_s3}) * 10 + ({rx2} / {i_s3}))"  # 3次（8桁）
+    )
+    if mesh_level == 3:
+        return s_code
+    ry3, rx3 = f"({ry2} % {i_s3})", f"({rx2} % {i_s3})"
+    if (
+        mesh_level == "tenth"
+    ):  # 1/10 細分: 3次を 10×10 に分け、緯度・経度の番号を 1 桁ずつ
+        return f"({s_code} * 100 + {ry3} * 10 + {rx3})"
+
+    # 1/2・1/4・1/8: 2×2 に分けることを繰り返す（1=南西 2=南東 3=北西 4=北東）
+    i_n = {"half": 1, "quarter": 2, "eighth": 3}[mesh_level]
+    i_s = i_s3
+    for _ in range(i_n):
+        i_half = i_s // 2
+        s_code = f"({s_code} * 10 + ({rx3} / {i_half}) + ({ry3} / {i_half}) * 2 + 1)"
+        ry3, rx3 = f"({ry3} % {i_half})", f"({rx3} % {i_half})"
+        i_s = i_half
+    return s_code

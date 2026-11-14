@@ -1667,6 +1667,18 @@ class SpatiaLiteConnection(sqlite3.Connection):
         mesh_level=3,
         ellipsoid="wgs84",
     ):
+        """範囲内の標準地域メッシュの表（PK_UID, mesh_code INTEGER, geom_pg_<EPSG>）を作り、GTBL を返す。
+
+        範囲: lat_max_or_t_nesw に (北, 東, 南, 西) の tuple、または北端を与えて
+            lon_max・lat_min・lon_min を指定する。範囲（境界を含む）と重なるメッシュをすべて作る
+            （北端・東端がメッシュ境界にちょうど一致する場合は、その北側・東側のメッシュも含む）。
+        mesh_level: 1, 2, 3, "5x", "2x", "half", "quarter", "eighth", "tenth"（1/10 細分）
+        ellipsoid: "wgs84"（EPSG:4612）または "bessel"（EPSG:4301）
+
+        注意: "quarter" と "tenth" はどちらも 10 桁のコードになり、コードだけではレベルを
+        区別できない（get_stdmeshcode2wkt 等は 10 桁を quarter とみなす）。
+        メッシュコードと区画は格子番号から SQL でまとめて作る（1 区画ずつ Python で作らない）。
+        """
         from . import standardmesh as mod_stdms
 
         # check given extent format
@@ -1688,25 +1700,10 @@ class SpatiaLiteConnection(sqlite3.Connection):
             return 0
 
         # do nothing when given mesh_level is invalid
-        if mesh_level not in (1, 2, 3, "5x", "2x", "half", "quarter", "eighth"):
+        if mesh_level not in mod_stdms.D_MESH_GRID_DIV:
             logger.warning(("invalid mesh_level: {}".format(mesh_level)))
 
             return 0
-
-        # obtain unit mesh size
-        unit_lon, unit_lat = mod_stdms.get_unitsize(mesh_level)
-
-        # メッシュコード群を生成
-        l_meshcode = list()
-        lat = lat_min
-
-        while lat <= lat_max:
-            lon = lon_min
-            while lon <= lon_max:
-                meshcode = mod_stdms.get_mesh_index(lon, lat, mesh_level)
-                l_meshcode.append(meshcode)
-                lon += unit_lon
-            lat += unit_lat
 
         # メッシュのテーブルを生成
         if ellipsoid == "wgs84":
@@ -1714,23 +1711,38 @@ class SpatiaLiteConnection(sqlite3.Connection):
         elif ellipsoid == "bessel":
             i_epsg = 4301
         else:
-            logger.warning('given parameter ellipsoid: "{}" is invalid.')
+            logger.warning('given parameter ellipsoid: "%s" is invalid.', ellipsoid)
             return 0
+
+        # 範囲の南西端・北東端を含むメッシュの格子番号（境界上の点は北東側のメッシュに入る）
+        i_div = mod_stdms.D_MESH_GRID_DIV[mesh_level]
+        i_lat0 = mod_stdms.get_mesh_grid_index(lat_min * 1.5, i_div)
+        i_lat1 = mod_stdms.get_mesh_grid_index(lat_max * 1.5, i_div)
+        i_lon0 = mod_stdms.get_mesh_grid_index(lon_min, i_div, 100.0)
+        i_lon1 = mod_stdms.get_mesh_grid_index(lon_max, i_div, 100.0)
 
         ll_coldef = [["mesh_code", "INTEGER"]]
         gt_mesh = GTBL(self, s_tbl, i_epsg, "pg")
         self.create_table(gt_mesh, ll_coldef)
 
-        # 連続的にメッシュポリゴンをInsert（左下から右上まで）
-        self.begin()
-        for s_meshcode in l_meshcode:
-            sql = """insert into "{}" select NULL, '{}', ST_GeomFromText('{}', {});""".format(
-                s_tbl, s_meshcode, mod_stdms.get_stdmeshcode2wkt(s_meshcode)[0], i_epsg
-            )
-            self.execute(sql)
-
+        # 格子番号を再帰 CTE で作り、メッシュコードと区画を SQL でまとめて INSERT する
+        s_code = mod_stdms.get_meshcode_sql_from_grid(mesh_level, "g.ilat", "g.ilon")
+        sql = f"""
+            WITH RECURSIVE
+              ys(ilat) AS (SELECT ? UNION ALL SELECT ilat + 1 FROM ys WHERE ilat < ?),
+              xs(ilon) AS (SELECT ? UNION ALL SELECT ilon + 1 FROM xs WHERE ilon < ?),
+              g AS (SELECT ilat, ilon FROM ys, xs)
+            INSERT INTO "{s_tbl}" ("mesh_code", "{gt_mesh.gc}")
+            SELECT {s_code},
+              BuildMbr(
+                100.0 + g.ilon * 1.0 / {i_div}, g.ilat / (1.5 * {i_div}),
+                100.0 + (g.ilon + 1) * 1.0 / {i_div}, (g.ilat + 1) / (1.5 * {i_div}),
+                {i_epsg})
+            FROM g ORDER BY g.ilat, g.ilon;
+        """
+        with self.transaction():
+            self.execute(sql, (i_lat0, i_lat1, i_lon0, i_lon1))
         self.add_uindex(s_tbl, "mesh_code")
-        self.commit()
 
         return gt_mesh
 
